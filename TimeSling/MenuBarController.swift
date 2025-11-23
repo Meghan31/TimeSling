@@ -197,7 +197,7 @@ class MenuBarController: NSObject {
                 let title = timer.title.isEmpty ? "Timer" : timer.title
                 // removed extra spaces and used consistent format
                 let item = NSMenuItem(
-                    title: "- \(title) - \(minutes):\(String(format: "%02d", seconds))",
+                    title: "\(title) - \(minutes):\(String(format: "%02d", seconds))",
                     action: #selector(cancelTimer(_:)),
                     keyEquivalent: ""
                 )

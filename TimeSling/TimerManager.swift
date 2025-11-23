@@ -197,6 +197,7 @@ class TimerManager: ObservableObject {
 }
 
 // Custom Completion Notification Window
+
 class CompletionNotificationWindow: NSPanel {
     private let message: String
     
@@ -205,61 +206,94 @@ class CompletionNotificationWindow: NSPanel {
         self.message = "\(title) is done! ✅"
         
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 300, height: 80),
-            styleMask: [.titled, .closable],
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 100),
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
         
         self.title = "TimeSling"
-        self.level = .floating
+        self.level = .screenSaver // Highest possible level - shows over fullscreen apps
         self.hasShadow = true
         self.isMovable = false
+        self.isFloatingPanel = true
+        self.worksWhenModal = true
+        self.collectionBehavior = [
+            .canJoinAllSpaces,       // Show across all spaces
+            .fullScreenAuxiliary,    // Show over fullscreen apps
+            .stationary,             // Don't move with active app
+            .ignoresCycle            // Don't participate in window cycling
+        ]
         self.hidesOnDeactivate = false
+        self.alphaValue = 0.0 // Start transparent for fade-in
         
         setupUI()
         positionWindow()
     }
     
     private func setupUI() {
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 80))
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 100))
+        contentView.wantsLayer = true
+        contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        contentView.layer?.cornerRadius = 12
+        contentView.layer?.borderWidth = 1
+        contentView.layer?.borderColor = NSColor.separatorColor.cgColor
         
-        let label = NSTextField(labelWithString: message)
-        label.frame = NSRect(x: 20, y: 30, width: 260, height: 40)
-        label.font = .systemFont(ofSize: 16, weight: .medium)
-        label.alignment = .center
-        label.textColor = .labelColor
+        // Title label
+        let titleLabel = NSTextField(labelWithString: "⏰ Timer Complete!")
+        titleLabel.frame = NSRect(x: 20, y: 60, width: 260, height: 20)
+        titleLabel.font = .systemFont(ofSize: 14, weight: .bold)
+        titleLabel.alignment = .center
+        titleLabel.textColor = .labelColor
+        contentView.addSubview(titleLabel)
         
+        // Message label
+        let messageLabel = NSTextField(labelWithString: message)
+        messageLabel.frame = NSRect(x: 20, y: 35, width: 260, height: 20)
+        messageLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        messageLabel.alignment = .center
+        messageLabel.textColor = .secondaryLabelColor
+        contentView.addSubview(messageLabel)
+        
+        // Close button
         let closeButton = NSButton(title: "OK", target: self, action: #selector(closeWindow))
         closeButton.frame = NSRect(x: 120, y: 10, width: 60, height: 25)
         closeButton.bezelStyle = .rounded
-        
-        contentView.addSubview(label)
+        closeButton.keyEquivalent = "\r" // Enter key to close
         contentView.addSubview(closeButton)
+        
         self.contentView = contentView
     }
     
     private func positionWindow() {
-        if let screen = NSScreen.main {
-            let screenRect = screen.visibleFrame
-            let x = screenRect.maxX - self.frame.width - 20
-            let y = screenRect.maxY - self.frame.height - 20
-            self.setFrameOrigin(NSPoint(x: x, y: y))
-        }
+        guard let screen = NSScreen.main else { return }
+        
+        let screenRect = screen.visibleFrame
+        let x = screenRect.maxX - self.frame.width - 20
+        let y = screenRect.maxY - self.frame.height - 80 // Position a bit lower to avoid menu bar
+        
+        self.setFrameOrigin(NSPoint(x: x, y: y))
     }
     
     func show() {
-        self.alphaValue = 0.0
-        self.orderFront(nil)
+        print("🔔 Showing notification over fullscreen apps")
+        
+        // Make sure we're on top of everything
+        self.level = .screenSaver
+        self.orderFrontRegardless() // Force to front regardless of app state
         
         // Animate in
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.3
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             self.animator().alphaValue = 1.0
         }
         
-        // Auto close after 5 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+        // Make window key to receive keyboard events (like Enter key)
+        self.makeKey()
+        
+        // Auto close after 8 seconds (longer for fullscreen apps)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) {
             self.closeWindow()
         }
     }
@@ -267,9 +301,20 @@ class CompletionNotificationWindow: NSPanel {
     @objc private func closeWindow() {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.3
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             self.animator().alphaValue = 0.0
         } completionHandler: {
             self.close()
+            self.orderOut(nil)
         }
+    }
+    
+    // Make sure the window can become key to receive Enter key
+    override var canBecomeKey: Bool {
+        return true
+    }
+    
+    override var canBecomeMain: Bool {
+        return true
     }
 }
