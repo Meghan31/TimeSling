@@ -18,6 +18,15 @@ class MenuBarController: NSObject {
     @objc private func cancelAllTimers() {
         timerManager.cancelAllTimers()
     }
+    @objc private func toggleNotifications(_ sender: NSMenuItem) {
+        timerManager.toggleNotifications()
+        sender.state = timerManager.notificationsEnabled ? .on : .off
+    }
+
+    @objc private func toggleSound(_ sender: NSMenuItem) {
+        timerManager.toggleSound()
+        sender.state = timerManager.soundEnabled ? .on : .off
+    }
     
     override init() {
         super.init()
@@ -82,6 +91,11 @@ class MenuBarController: NSObject {
         updateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             DispatchQueue.main.async {
                 self?.updateMenuBarTitle()
+                
+                // If menu is open, refresh the menu items more frequently for smooth updates
+                if self?.statusItem.menu != nil {
+                    self?.refreshMenuIfOpen()
+                }
             }
         }
         RunLoop.main.add(updateTimer!, forMode: .common)
@@ -94,25 +108,24 @@ class MenuBarController: NSObject {
         var newTitle: String
         
         if activeTimers.isEmpty {
-            newTitle = "⏱"  // Default icon when no timers
+            newTitle = "⏱"
         } else if activeTimers.count == 1 {
             let timer = activeTimers[0]
             let timeRemaining = max(0, timer.endTime.timeIntervalSinceNow)
             let minutes = Int(timeRemaining) / 60
             let seconds = Int(timeRemaining) % 60
-            
-            // For single timer, show time remaining
             newTitle = String(format: "%d:%02d", minutes, seconds)
         } else {
-            // For multiple timers, just show the count to save space
             newTitle = "\(activeTimers.count)-⏱'s"
         }
         
-        // Only update if changed to prevent flickering
         if newTitle != lastDisplayedTitle {
             button.title = newTitle
             lastDisplayedTitle = newTitle
             print("📝 Menu bar updated: '\(newTitle)' - \(activeTimers.count) active timers")
+            
+            // Refresh menu if it's open to update the timer displays
+            refreshMenuIfOpen()
         }
     }
     
@@ -171,7 +184,6 @@ class MenuBarController: NSObject {
         
         let activeTimers = timerManager.getActiveTimers()
         if !activeTimers.isEmpty {
-            // Add header for active timers
             let headerItem = NSMenuItem(title: "Active Timers (\(activeTimers.count))", action: nil, keyEquivalent: "")
             headerItem.isEnabled = false
             menu.addItem(headerItem)
@@ -183,8 +195,9 @@ class MenuBarController: NSObject {
                 let seconds = Int(timeRemaining) % 60
                 
                 let title = timer.title.isEmpty ? "Timer" : timer.title
+                // removed extra spaces and used consistent format
                 let item = NSMenuItem(
-                    title: "⏱ \(title) - \(minutes):\(String(format: "%02d", seconds))",
+                    title: "- \(title) - \(minutes):\(String(format: "%02d", seconds))",
                     action: #selector(cancelTimer(_:)),
                     keyEquivalent: ""
                 )
@@ -193,16 +206,22 @@ class MenuBarController: NSObject {
                 menu.addItem(item)
             }
             menu.addItem(NSMenuItem.separator())
+            
+            // Add cancel all option if there are multiple timers
+            if activeTimers.count > 1 {
+                let cancelAllItem = NSMenuItem(title: "Cancel All Timers", action: #selector(cancelAllTimers), keyEquivalent: "")
+                cancelAllItem.target = self
+                menu.addItem(cancelAllItem)
+                menu.addItem(NSMenuItem.separator())
+            }
         }
         
-        // Quick Timers section
         let quickTimersHeader = NSMenuItem(title: "Quick Timers", action: nil, keyEquivalent: "")
         quickTimersHeader.isEnabled = false
         menu.addItem(quickTimersHeader)
         
         let presets: [(String, Int)] = [
             ("5 minutes", 5 * 60),
-            ("10 minutes", 10 * 60),
             ("15 minutes", 15 * 60),
             ("30 minutes", 30 * 60),
             ("1 hour", 60 * 60),
@@ -210,7 +229,7 @@ class MenuBarController: NSObject {
         ]
         
         for (title, seconds) in presets {
-            let item = NSMenuItem(title: "  \(title)", action: #selector(quickTimerSelected(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: title, action: #selector(quickTimerSelected(_:)), keyEquivalent: "") // Removed extra spaces
             item.tag = seconds
             item.target = self
             menu.addItem(item)
@@ -218,26 +237,79 @@ class MenuBarController: NSObject {
         
         menu.addItem(NSMenuItem.separator())
         
-        // Drag instruction
+        // Settings section
+        let settingsHeader = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
+        settingsHeader.isEnabled = false
+        menu.addItem(settingsHeader)
+        
+        // Notification toggle
+        let notificationsItem = NSMenuItem(
+            title: "Enable Notifications",
+            action: #selector(toggleNotifications(_:)),
+            keyEquivalent: ""
+        )
+        notificationsItem.state = timerManager.notificationsEnabled ? .on : .off
+        notificationsItem.target = self
+        menu.addItem(notificationsItem)
+        
+        // Sound toggle
+        let soundItem = NSMenuItem(
+            title: "Enable Sound",
+            action: #selector(toggleSound(_:)),
+            keyEquivalent: ""
+        )
+        soundItem.state = timerManager.soundEnabled ? .on : .off
+        soundItem.target = self
+        menu.addItem(soundItem)
+        
+        menu.addItem(NSMenuItem.separator())
+        
         let dragItem = NSMenuItem(title: "Drag icon down for custom timer", action: nil, keyEquivalent: "")
         dragItem.isEnabled = false
         menu.addItem(dragItem)
         
         menu.addItem(NSMenuItem.separator())
-//        menu.addItem(NSMenuItem(title: "Quit TimeSling", action: #selector(quit), keyEquivalent: "q"))
-        // Add cancel all option if there are multiple timers
-        
-        if activeTimers.count > 1 {
-            let cancelAllItem = NSMenuItem(title: "Cancel All Timers", action: #selector(cancelAllTimers), keyEquivalent: "")
-            cancelAllItem.target = self
-            menu.addItem(cancelAllItem)
-            menu.addItem(NSMenuItem.separator())
-        }
+        menu.addItem(NSMenuItem(title: "Quit TimeSling", action: #selector(quit), keyEquivalent: "q"))
         
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
     }
+    private func refreshMenuIfOpen() {
+        // If menu is currently open, update the timer items in real-time
+        guard let menu = statusItem.menu else { return }
+        
+        // Get current active timers
+        let activeTimers = timerManager.getActiveTimers()
+        
+        // Update only the timer items (skip headers, separators, and other items)
+        var timerIndex = 0
+        var menuItemIndex = 0
+        
+        for menuItem in menu.items {
+            // Look for timer items (they have representedObject set to UUID)
+            if menuItem.representedObject as? UUID != nil {
+                if timerIndex < activeTimers.count {
+                    let timer = activeTimers[timerIndex]
+                    let timeRemaining = max(0, timer.endTime.timeIntervalSinceNow)
+                    let minutes = Int(timeRemaining) / 60
+                    let seconds = Int(timeRemaining) % 60
+                    
+                    let title = timer.title.isEmpty ? "Timer" : timer.title
+                    let newTitle = "\(title) - \(minutes):\(String(format: "%02d", seconds))"
+                    
+                    // Only update if the title has changed (to prevent unnecessary redraws)
+                    if menuItem.title != newTitle {
+                        menuItem.title = newTitle
+                    }
+                    
+                    timerIndex += 1
+                }
+                menuItemIndex += 1
+            }
+        }
+    }
+    
     
     @objc private func cancelTimer(_ sender: NSMenuItem) {
         if let timerId = sender.representedObject as? UUID {
