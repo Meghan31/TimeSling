@@ -1,5 +1,5 @@
 //
-//  Draggestureview.swift
+//  DragGestureView.swift
 //  TimeSling
 //
 //  Created by Meghasrivardhan Pulakhandam on 11/23/25.
