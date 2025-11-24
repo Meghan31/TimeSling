@@ -444,299 +444,299 @@ extension MenuBarController: UNUserNotificationCenterDelegate {
 
 
 // MARK: - DragWindow Styling - Circular Style
-//class DragWindow: NSPanel {
-//    private var textLayer = CATextLayer()
-//    private var currentDuration: TimeInterval = 0
-//    private var progressLayer: CAShapeLayer?
-//    private var backgroundRing: CAShapeLayer?
-//    
-//    init() {
-//        super.init(
-//            contentRect: NSRect(x: 0, y: 0, width: 90, height: 90),
-//            styleMask: [.borderless, .nonactivatingPanel],
-//            backing: .buffered,
-//            defer: false
-//        )
-//        
-//        self.isOpaque = false
-//        self.backgroundColor = .clear
-//        self.level = .screenSaver
-//        self.hasShadow = true
-//        self.ignoresMouseEvents = true
-//        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-//        
-//        setupUI()
-//    }
-//    
-//    private func setupUI() {
-//        let view = NSView(frame: NSRect(x: 0, y: 0, width: 90, height: 90))
-//        view.wantsLayer = true
-//        view.layer = CALayer()
-//        view.layer?.backgroundColor = NSColor.clear.cgColor
-//        view.layer?.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
-//        
-//        // ---- Background circle ----
-//        let circle = CALayer()
-//        circle.frame = NSRect(x: 5, y: 5, width: 80, height: 80)
-//        circle.cornerRadius = 40
-//        circle.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
-//        circle.borderWidth = 1
-//        circle.borderColor = NSColor.white.withAlphaComponent(0.2).cgColor
-//        view.layer?.addSublayer(circle)
-//        
-//        // ---- Rings ----
-//        let center = CGPoint(x: 45, y: 45)
-//        let radius: CGFloat = 35
-//        let lineWidth: CGFloat = 6
-//        
-//        let path = NSBezierPath()
-//        path.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360, clockwise: true)
-//        
-//        backgroundRing = CAShapeLayer()
-//        backgroundRing?.path = path.cgPath
-//        backgroundRing?.strokeColor = NSColor.white.withAlphaComponent(0.15).cgColor
-//        backgroundRing?.fillColor = .none
-//        backgroundRing?.lineWidth = lineWidth
-//        view.layer?.addSublayer(backgroundRing!)
-//        
-//        progressLayer = CAShapeLayer()
-//        progressLayer?.path = path.cgPath
-//        progressLayer?.strokeColor = NSColor.systemBlue.cgColor
-//        progressLayer?.fillColor = .none
-//        progressLayer?.lineWidth = lineWidth
-//        progressLayer?.strokeEnd = 0
-//        view.layer?.addSublayer(progressLayer!)
-//        
-//        // ---- CATextLayer label ----
-//        textLayer.frame = CGRect(x: 10, y: 28, width: 70, height: 30)
-//        textLayer.fontSize = 15
-//        textLayer.font = NSFont.boldSystemFont(ofSize: 15)
-//        textLayer.alignmentMode = .center
-//        textLayer.foregroundColor = NSColor.white.cgColor
-//        textLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
-//        textLayer.isWrapped = false
-//        textLayer.string = ""
-//        view.layer?.addSublayer(textLayer)
-//        
-//        self.contentView = view
-//    }
-//    
-//    
-//    func show(at point: NSPoint) {
-//        self.setFrameOrigin(NSPoint(x: point.x - 45, y: point.y - 100))
-//        
-//        self.alphaValue = 0
-//        self.orderFront(nil)
-//        
-//        NSAnimationContext.runAnimationGroup { ctx in
-//            ctx.duration = 0.25
-//            self.animator().alphaValue = 1
-//        }
-//    }
-//    
-//    func update(at point: NSPoint, dragDistance: CGFloat) {
-//        self.setFrameOrigin(NSPoint(x: point.x - 45, y: point.y - 100))
-//        
-//        // Hide when too small
-//        if dragDistance < 5 {
-//            textLayer.string = ""
-//            progressLayer?.strokeEnd = 0
-//            return
-//        }
-//        
-//        // --- Duration calculation ---
-//        let adjusted = max(0, dragDistance - 20)
-//        
-//        // 100px = 30 minutes (same as your original mapping)
-//        let minutes = Int(adjusted / 100 * 90)
-//        
-//        // Clamp to max 4h 59m (299 min)
-//        let clampedMinutes = min(minutes, 4 * 60 + 59)
-//        currentDuration = TimeInterval(clampedMinutes * 60)
-//        
-//        // --- Convert to hours/minutes ---
-//        let hours = clampedMinutes / 60
-//        let mins = clampedMinutes % 60
-//        
-//        // --- Display logic exactly how you requested ---
-//        if clampedMinutes == 0 {
-//            textLayer.string = "⏱"
-//            
-//        } else if hours == 0 {
-//            // 1m - 59m
-//            textLayer.string = "\(mins)m"
-//            
-//        } else {
-//            // 1h 0m - 4h 59m
-//            textLayer.string = "\(hours)h \(mins)m"
-//        }
-//        
-//        // --- Ring Progress ---
-//        let maxDuration: CGFloat = 4 * 3600 // 4 hours
-//        let progress = min(CGFloat(currentDuration) / maxDuration, 1)
-//        progressLayer?.strokeEnd = progress
-//        
-//        // Color change (optional)
-//        if progress < 0.33 {
-//            progressLayer?.strokeColor = NSColor.systemGreen.cgColor
-//        } else if progress < 0.66 {
-//            progressLayer?.strokeColor = NSColor.systemBlue.cgColor
-//        } else {
-//            progressLayer?.strokeColor = NSColor.systemOrange.cgColor
-//        }
-//    }
-//
-//    
-//    func hide() {
-//        NSAnimationContext.runAnimationGroup { ctx in
-//            ctx.duration = 0.2
-//            self.animator().alphaValue = 0
-//        } completionHandler: {
-//            self.orderOut(nil)
-//        }
-//    }
-//    
-//    func getDuration() -> TimeInterval { currentDuration }
-//}
-//
-
-
-// MARK: - DragWindow - Character Version
 class DragWindow: NSPanel {
-    private let characterImageView = NSImageView()
-    private let textLayer = CATextLayer()
-    private var currentDuration: TimeInterval = 0
-    
-    init() {
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 120, height: 160),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        
-        self.isOpaque = false
-        self.backgroundColor = .clear
-        self.level = .screenSaver
-        self.hasShadow = true
-        self.ignoresMouseEvents = true
-        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        
-        setupUI()
-    }
-    
-    private func setupUI() {
-        let frame = NSRect(x: 0, y: 0, width: 120, height: 140)
-        let bgView = NSView(frame: frame)
-        bgView.wantsLayer = true
-        bgView.layer = CALayer()
-        bgView.layer?.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
-        
-        // Rounded background
-        let backgroundLayer = CALayer()
-        backgroundLayer.frame = NSRect(x: 10, y: 10, width: 100, height: 80)
-        backgroundLayer.cornerRadius = 20
-        backgroundLayer.backgroundColor = NSColor.black.withAlphaComponent(0.7).cgColor
-        backgroundLayer.borderWidth = 2
-        backgroundLayer.borderColor = NSColor.white.withAlphaComponent(0.25).cgColor
-        bgView.layer?.addSublayer(backgroundLayer)
-        
-        // Character image
-        characterImageView.frame = NSRect(x: 20, y: 50, width: 80, height: 80)
-        characterImageView.imageScaling = .scaleProportionallyUpOrDown
-        characterImageView.alphaValue = 0.0
-        bgView.addSubview(characterImageView)
-        
-        // Timer text layer
-        textLayer.frame = CGRect(x: 10, y: 20, width: 100, height: 30)
-        textLayer.alignmentMode = .center
-        textLayer.font = NSFont.boldSystemFont(ofSize: 18)
-        textLayer.fontSize = 18
-        textLayer.foregroundColor = NSColor.white.cgColor
-        textLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
-        textLayer.isWrapped = false
-        textLayer.string = ""
-        bgView.layer?.addSublayer(textLayer)
-        
-        self.contentView = bgView
-    }
-    
-    func show(at point: NSPoint) {
-        let offset = NSPoint(x: point.x - 60, y: point.y - 140)
-        self.setFrameOrigin(offset)
-        
-        characterImageView.alphaValue = 0.0
-        textLayer.string = ""
-        currentDuration = 0
-        
-        self.alphaValue = 0
-        self.orderFront(nil)
-        
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.25
-            self.animator().alphaValue = 1
-        }
-    }
-    
-    func update(at point: NSPoint, dragDistance: CGFloat) {
-        self.setFrameOrigin(NSPoint(x: point.x - 60, y: point.y - 140))
-        
-        if dragDistance < 5 {
-            textLayer.string = ""
-            characterImageView.alphaValue = 0.0
-            currentDuration = 0
-            return
-        }
-        
-        // Calculate duration
-        let adjusted = max(0, dragDistance - 20)
-        let minutes = Int(adjusted / 100 * 90)
+   private var textLayer = CATextLayer()
+   private var currentDuration: TimeInterval = 0
+   private var progressLayer: CAShapeLayer?
+   private var backgroundRing: CAShapeLayer?
+   
+   init() {
+       super.init(
+           contentRect: NSRect(x: 0, y: 0, width: 90, height: 90),
+           styleMask: [.borderless, .nonactivatingPanel],
+           backing: .buffered,
+           defer: false
+       )
+       
+       self.isOpaque = false
+       self.backgroundColor = .clear
+       self.level = .screenSaver
+       self.hasShadow = true
+       self.ignoresMouseEvents = true
+       self.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+       
+       setupUI()
+   }
+   
+   private func setupUI() {
+       let view = NSView(frame: NSRect(x: 0, y: 0, width: 90, height: 90))
+       view.wantsLayer = true
+       view.layer = CALayer()
+       view.layer?.backgroundColor = NSColor.clear.cgColor
+       view.layer?.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+       
+       // ---- Background circle ----
+       let circle = CALayer()
+       circle.frame = NSRect(x: 5, y: 5, width: 80, height: 80)
+       circle.cornerRadius = 40
+       circle.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
+       circle.borderWidth = 1
+       circle.borderColor = NSColor.white.withAlphaComponent(0.2).cgColor
+       view.layer?.addSublayer(circle)
+       
+       // ---- Rings ----
+       let center = CGPoint(x: 45, y: 45)
+       let radius: CGFloat = 35
+       let lineWidth: CGFloat = 6
+       
+       let path = NSBezierPath()
+       path.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360, clockwise: true)
+       
+       backgroundRing = CAShapeLayer()
+       backgroundRing?.path = path.cgPath
+       backgroundRing?.strokeColor = NSColor.white.withAlphaComponent(0.15).cgColor
+       backgroundRing?.fillColor = .none
+       backgroundRing?.lineWidth = lineWidth
+       view.layer?.addSublayer(backgroundRing!)
+       
+       progressLayer = CAShapeLayer()
+       progressLayer?.path = path.cgPath
+       progressLayer?.strokeColor = NSColor.systemBlue.cgColor
+       progressLayer?.fillColor = .none
+       progressLayer?.lineWidth = lineWidth
+       progressLayer?.strokeEnd = 0
+       view.layer?.addSublayer(progressLayer!)
+       
+       // ---- CATextLayer label ----
+       textLayer.frame = CGRect(x: 10, y: 28, width: 70, height: 30)
+       textLayer.fontSize = 15
+       textLayer.font = NSFont.boldSystemFont(ofSize: 15)
+       textLayer.alignmentMode = .center
+       textLayer.foregroundColor = NSColor.white.cgColor
+       textLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+       textLayer.isWrapped = false
+       textLayer.string = ""
+       view.layer?.addSublayer(textLayer)
+       
+       self.contentView = view
+   }
+   
+   
+   func show(at point: NSPoint) {
+       self.setFrameOrigin(NSPoint(x: point.x - 45, y: point.y - 100))
+       
+       self.alphaValue = 0
+       self.orderFront(nil)
+       
+       NSAnimationContext.runAnimationGroup { ctx in
+           ctx.duration = 0.25
+           self.animator().alphaValue = 1
+       }
+   }
+   
+   func update(at point: NSPoint, dragDistance: CGFloat) {
+       self.setFrameOrigin(NSPoint(x: point.x - 45, y: point.y - 100))
+       
+       // Hide when too small
+       if dragDistance < 5 {
+           textLayer.string = ""
+           progressLayer?.strokeEnd = 0
+           return
+       }
+       
+       // --- Duration calculation ---
+       let adjusted = max(0, dragDistance - 20)
+       
+       // 100px = 30 minutes (same as your original mapping)
+       let minutes = Int(adjusted / 100 * 90)
+       
+       // Clamp to max 4h 59m (299 min)
+       let clampedMinutes = min(minutes, 4 * 60 + 59)
+       currentDuration = TimeInterval(clampedMinutes * 60)
+       
+       // --- Convert to hours/minutes ---
+       let hours = clampedMinutes / 60
+       let mins = clampedMinutes % 60
+       
+       // --- Display logic exactly how you requested ---
+       if clampedMinutes == 0 {
+           textLayer.string = "⏱"
+           
+       } else if hours == 0 {
+           // 1m - 59m
+           textLayer.string = "\(mins)m"
+           
+       } else {
+           // 1h 0m - 4h 59m
+           textLayer.string = "\(hours)h \(mins)m"
+       }
+       
+       // --- Ring Progress ---
+       let maxDuration: CGFloat = 4 * 3600 // 4 hours
+       let progress = min(CGFloat(currentDuration) / maxDuration, 1)
+       progressLayer?.strokeEnd = progress
+       
+       // Color change (optional)
+       if progress < 0.33 {
+           progressLayer?.strokeColor = NSColor.systemGreen.cgColor
+       } else if progress < 0.66 {
+           progressLayer?.strokeColor = NSColor.systemBlue.cgColor
+       } else {
+           progressLayer?.strokeColor = NSColor.systemOrange.cgColor
+       }
+   }
 
-        // Clamp to max 4h 59m
-        let clampedMinutes = min(minutes, 4 * 60 + 59)
-        currentDuration = TimeInterval(clampedMinutes * 60)
-        
-        let hours = clampedMinutes / 60
-        let mins = clampedMinutes % 60
-        
-        // Character logic
-        characterImageView.alphaValue = 1
-        
-        if currentDuration < 60 {
-            characterImageView.image = NSImage(named: "DragIconWorried")
-            textLayer.string = "⏱"
-            
-        } else if clampedMinutes < 30 {
-            characterImageView.image = NSImage(named: "DragIconHappy")
-            textLayer.string = "\(mins)m"
-            
-        } else if hours >= 0 {
-            characterImageView.image = NSImage(named: "DragIconTeeth")
-            textLayer.string = "\(hours)h \(mins)m"
-            
-        } else {
-            characterImageView.image = NSImage(named: "DragIconHappy")
-            textLayer.string = "\(mins)m"
-        }
-    }
-    
-    func getDuration() -> TimeInterval {
-        return currentDuration
-    }
-    
-    func hide() {
-        characterImageView.alphaValue = 0.0
-        textLayer.string = ""
-        currentDuration = 0
-        
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.18
-            self.animator().alphaValue = 0
-        } completionHandler: {
-            self.orderOut(nil)
-        }
-    }
+   
+   func hide() {
+       NSAnimationContext.runAnimationGroup { ctx in
+           ctx.duration = 0.2
+           self.animator().alphaValue = 0
+       } completionHandler: {
+           self.orderOut(nil)
+       }
+   }
+   
+   func getDuration() -> TimeInterval { currentDuration }
 }
+
+
+
+// // MARK: - DragWindow - Character Version
+// class DragWindow: NSPanel {
+//     private let characterImageView = NSImageView()
+//     private let textLayer = CATextLayer()
+//     private var currentDuration: TimeInterval = 0
+    
+//     init() {
+//         super.init(
+//             contentRect: NSRect(x: 0, y: 0, width: 120, height: 160),
+//             styleMask: [.borderless, .nonactivatingPanel],
+//             backing: .buffered,
+//             defer: false
+//         )
+        
+//         self.isOpaque = false
+//         self.backgroundColor = .clear
+//         self.level = .screenSaver
+//         self.hasShadow = true
+//         self.ignoresMouseEvents = true
+//         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        
+//         setupUI()
+//     }
+    
+//     private func setupUI() {
+//         let frame = NSRect(x: 0, y: 0, width: 120, height: 140)
+//         let bgView = NSView(frame: frame)
+//         bgView.wantsLayer = true
+//         bgView.layer = CALayer()
+//         bgView.layer?.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+        
+//         // Rounded background
+//         let backgroundLayer = CALayer()
+//         backgroundLayer.frame = NSRect(x: 10, y: 10, width: 100, height: 80)
+//         backgroundLayer.cornerRadius = 20
+//         backgroundLayer.backgroundColor = NSColor.black.withAlphaComponent(0.7).cgColor
+//         backgroundLayer.borderWidth = 2
+//         backgroundLayer.borderColor = NSColor.white.withAlphaComponent(0.25).cgColor
+//         bgView.layer?.addSublayer(backgroundLayer)
+        
+//         // Character image
+//         characterImageView.frame = NSRect(x: 20, y: 50, width: 80, height: 80)
+//         characterImageView.imageScaling = .scaleProportionallyUpOrDown
+//         characterImageView.alphaValue = 0.0
+//         bgView.addSubview(characterImageView)
+        
+//         // Timer text layer
+//         textLayer.frame = CGRect(x: 10, y: 20, width: 100, height: 30)
+//         textLayer.alignmentMode = .center
+//         textLayer.font = NSFont.boldSystemFont(ofSize: 18)
+//         textLayer.fontSize = 18
+//         textLayer.foregroundColor = NSColor.white.cgColor
+//         textLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+//         textLayer.isWrapped = false
+//         textLayer.string = ""
+//         bgView.layer?.addSublayer(textLayer)
+        
+//         self.contentView = bgView
+//     }
+    
+//     func show(at point: NSPoint) {
+//         let offset = NSPoint(x: point.x - 60, y: point.y - 140)
+//         self.setFrameOrigin(offset)
+        
+//         characterImageView.alphaValue = 0.0
+//         textLayer.string = ""
+//         currentDuration = 0
+        
+//         self.alphaValue = 0
+//         self.orderFront(nil)
+        
+//         NSAnimationContext.runAnimationGroup { ctx in
+//             ctx.duration = 0.25
+//             self.animator().alphaValue = 1
+//         }
+//     }
+    
+//     func update(at point: NSPoint, dragDistance: CGFloat) {
+//         self.setFrameOrigin(NSPoint(x: point.x - 60, y: point.y - 140))
+        
+//         if dragDistance < 5 {
+//             textLayer.string = ""
+//             characterImageView.alphaValue = 0.0
+//             currentDuration = 0
+//             return
+//         }
+        
+//         // Calculate duration
+//         let adjusted = max(0, dragDistance - 20)
+//         let minutes = Int(adjusted / 100 * 90)
+
+//         // Clamp to max 4h 59m
+//         let clampedMinutes = min(minutes, 4 * 60 + 59)
+//         currentDuration = TimeInterval(clampedMinutes * 60)
+        
+//         let hours = clampedMinutes / 60
+//         let mins = clampedMinutes % 60
+        
+//         // Character logic
+//         characterImageView.alphaValue = 1
+        
+//         if currentDuration < 60 {
+//             characterImageView.image = NSImage(named: "DragIconWorried")
+//             textLayer.string = "⏱"
+            
+//         } else if clampedMinutes < 30 {
+//             characterImageView.image = NSImage(named: "DragIconHappy")
+//             textLayer.string = "\(mins)m"
+            
+//         } else if hours >= 0 {
+//             characterImageView.image = NSImage(named: "DragIconTeeth")
+//             textLayer.string = "\(hours)h \(mins)m"
+            
+//         } else {
+//             characterImageView.image = NSImage(named: "DragIconHappy")
+//             textLayer.string = "\(mins)m"
+//         }
+//     }
+    
+//     func getDuration() -> TimeInterval {
+//         return currentDuration
+//     }
+    
+//     func hide() {
+//         characterImageView.alphaValue = 0.0
+//         textLayer.string = ""
+//         currentDuration = 0
+        
+//         NSAnimationContext.runAnimationGroup { ctx in
+//             ctx.duration = 0.18
+//             self.animator().alphaValue = 0
+//         } completionHandler: {
+//             self.orderOut(nil)
+//         }
+//     }
+// }
 
 
 
