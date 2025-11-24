@@ -1,3 +1,4 @@
+//
 //  TimerManager.swift
 //  TimeSling
 //
@@ -22,7 +23,6 @@ class TimerManager: ObservableObject {
     private let lock = NSLock()
     private var checkTimer: Timer?
     
-    // User settings
     var notificationsEnabled: Bool = true
     var soundEnabled: Bool = true
     
@@ -36,7 +36,6 @@ class TimerManager: ObservableObject {
     }
     
     private func loadSettings() {
-        // Load saved settings or use defaults
         notificationsEnabled = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
         soundEnabled = UserDefaults.standard.object(forKey: "soundEnabled") as? Bool ?? true
     }
@@ -70,6 +69,14 @@ class TimerManager: ObservableObject {
             scheduleNotification(for: timer)
         }
         
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .timerStarted,
+                object: nil,
+                userInfo: ["timer": timer]
+            )
+        }
+        
         print("✅ Timer started: \(Int(duration))s, ends at \(timer.endTime)")
     }
     
@@ -82,6 +89,14 @@ class TimerManager: ObservableObject {
         _activeTimers.removeAll { $0.id == id }
         lock.unlock()
         
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .timerCancelled,
+                object: nil,
+                userInfo: ["timerId": id]
+            )
+        }
+        
         print("❌ Timer cancelled")
     }
     
@@ -93,6 +108,15 @@ class TimerManager: ObservableObject {
         for timerId in allTimerIds {
             cancelTimer(id: timerId)
         }
+        
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .timerCancelled,
+                object: nil,
+                userInfo: ["cancelAll": true]
+            )
+        }
+        
         print("🗑 All timers cancelled")
     }
     
@@ -124,12 +148,25 @@ class TimerManager: ObservableObject {
     }
     
     private func timerCompleted(_ timer: TimerItem) {
-        // Show notification
-        if notificationsEnabled {
-            showCompletionNotification(for: timer)
+        print("🎉 Timer completed: \(timer.title)")
+        
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .timerCompleted,
+                object: nil,
+                userInfo: ["timerTitle": timer.title, "timerId": timer.id]
+            )
         }
         
-        // Play sound
+        DispatchQueue.main.async {
+            let notification = CompletionNotificationWindow(timerTitle: timer.title)
+            notification.show()
+        }
+        
+        if notificationsEnabled {
+            showEnhancedSystemNotification(for: timer)
+        }
+        
         if soundEnabled {
             playCompletionSound()
         }
@@ -162,27 +199,43 @@ class TimerManager: ObservableObject {
         }
     }
     
-    private func showCompletionNotification(for timer: TimerItem) {
-        // Create a small custom notification window
-        DispatchQueue.main.async {
-            let notification = CompletionNotificationWindow(timerTitle: timer.title)
-            notification.show()
+    private func showEnhancedSystemNotification(for timer: TimerItem) {
+        let content = UNMutableNotificationContent()
+        content.title = "⏰ Timer Complete!"
+        content.body = timer.title.isEmpty ? "Your timer has finished!" : "\(timer.title) is done!"
+        content.sound = UNNotificationSound.defaultCritical
+        content.interruptionLevel = .critical
+        content.relevanceScore = 1.0
+        
+        let request = UNNotificationRequest(
+            identifier: "critical-\(timer.id.uuidString)",
+            content: content,
+            trigger: nil
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("❌ Critical notification error: \(error)")
+                DispatchQueue.main.async {
+                    let notification = CompletionNotificationWindow(timerTitle: timer.title)
+                    notification.show()
+                }
+            } else {
+                print("✅ Critical notification sent")
+            }
         }
     }
     
     private func playCompletionSound() {
         DispatchQueue.main.async {
-            // Use system sound instead of beep for better user experience
             NSSound(named: "Glass")?.play()
             
-            // Play multiple times for emphasis (but fewer than before)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 NSSound(named: "Glass")?.play()
             }
         }
     }
     
-    // Settings methods
     func toggleNotifications() {
         notificationsEnabled.toggle()
         saveSettings()
@@ -196,8 +249,7 @@ class TimerManager: ObservableObject {
     }
 }
 
-// Custom Completion Notification Window
-
+// MARK: - Custom Completion Notification Window (FIXED for Fullscreen Apps)
 class CompletionNotificationWindow: NSPanel {
     private let message: String
     
@@ -213,19 +265,19 @@ class CompletionNotificationWindow: NSPanel {
         )
         
         self.title = "TimeSling"
-        self.level = .screenSaver // Highest possible level - shows over fullscreen apps
+        self.level = .screenSaver
         self.hasShadow = true
         self.isMovable = false
         self.isFloatingPanel = true
         self.worksWhenModal = true
         self.collectionBehavior = [
-            .canJoinAllSpaces,       // Show across all spaces
-            .fullScreenAuxiliary,    // Show over fullscreen apps
-            .stationary,             // Don't move with active app
-            .ignoresCycle            // Don't participate in window cycling
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .stationary,
+            .ignoresCycle
         ]
         self.hidesOnDeactivate = false
-        self.alphaValue = 0.0 // Start transparent for fade-in
+        self.alphaValue = 0.0
         
         setupUI()
         positionWindow()
@@ -239,7 +291,6 @@ class CompletionNotificationWindow: NSPanel {
         contentView.layer?.borderWidth = 1
         contentView.layer?.borderColor = NSColor.separatorColor.cgColor
         
-        // Title label
         let titleLabel = NSTextField(labelWithString: "⏰ Timer Complete!")
         titleLabel.frame = NSRect(x: 20, y: 60, width: 260, height: 20)
         titleLabel.font = .systemFont(ofSize: 14, weight: .bold)
@@ -247,7 +298,6 @@ class CompletionNotificationWindow: NSPanel {
         titleLabel.textColor = .labelColor
         contentView.addSubview(titleLabel)
         
-        // Message label
         let messageLabel = NSTextField(labelWithString: message)
         messageLabel.frame = NSRect(x: 20, y: 35, width: 260, height: 20)
         messageLabel.font = .systemFont(ofSize: 13, weight: .medium)
@@ -255,11 +305,10 @@ class CompletionNotificationWindow: NSPanel {
         messageLabel.textColor = .secondaryLabelColor
         contentView.addSubview(messageLabel)
         
-        // Close button
         let closeButton = NSButton(title: "OK", target: self, action: #selector(closeWindow))
         closeButton.frame = NSRect(x: 120, y: 10, width: 60, height: 25)
         closeButton.bezelStyle = .rounded
-        closeButton.keyEquivalent = "\r" // Enter key to close
+        closeButton.keyEquivalent = "\r"
         contentView.addSubview(closeButton)
         
         self.contentView = contentView
@@ -270,7 +319,7 @@ class CompletionNotificationWindow: NSPanel {
         
         let screenRect = screen.visibleFrame
         let x = screenRect.maxX - self.frame.width - 20
-        let y = screenRect.maxY - self.frame.height - 80 // Position a bit lower to avoid menu bar
+        let y = screenRect.maxY - self.frame.height - 80
         
         self.setFrameOrigin(NSPoint(x: x, y: y))
     }
@@ -278,21 +327,17 @@ class CompletionNotificationWindow: NSPanel {
     func show() {
         print("🔔 Showing notification over fullscreen apps")
         
-        // Make sure we're on top of everything
         self.level = .screenSaver
-        self.orderFrontRegardless() // Force to front regardless of app state
+        self.orderFrontRegardless()
         
-        // Animate in
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.3
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             self.animator().alphaValue = 1.0
         }
         
-        // Make window key to receive keyboard events (like Enter key)
         self.makeKey()
         
-        // Auto close after 8 seconds (longer for fullscreen apps)
         DispatchQueue.main.asyncAfter(deadline: .now() + 8.0) {
             self.closeWindow()
         }
@@ -309,7 +354,6 @@ class CompletionNotificationWindow: NSPanel {
         }
     }
     
-    // Make sure the window can become key to receive Enter key
     override var canBecomeKey: Bool {
         return true
     }

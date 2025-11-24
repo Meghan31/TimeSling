@@ -5,38 +5,37 @@
 //  Created by Meghasrivardhan Pulakhandam on 11/23/25.
 //
 
-
 import Cocoa
 import SwiftUI
 import UserNotifications
+import QuartzCore
+
+// Notification names for timer events
+extension Notification.Name {
+    static let timerCompleted = Notification.Name("timerCompleted")
+    static let timerStarted = Notification.Name("timerStarted")
+    static let timerCancelled = Notification.Name("timerCancelled")
+}
 
 class MenuBarController: NSObject {
     private var statusItem: NSStatusItem!
     private var updateTimer: Timer?
+    private var menuUpdateTimer: Timer?
     private let timerManager = TimerManager.shared
     private var lastDisplayedTitle: String = ""
-    @objc private func cancelAllTimers() {
-        timerManager.cancelAllTimers()
-    }
-    @objc private func toggleNotifications(_ sender: NSMenuItem) {
-        timerManager.toggleNotifications()
-        sender.state = timerManager.notificationsEnabled ? .on : .off
-    }
-
-    @objc private func toggleSound(_ sender: NSMenuItem) {
-        timerManager.toggleSound()
-        sender.state = timerManager.soundEnabled ? .on : .off
-    }
     
     override init() {
         super.init()
         setupMenuBar()
         setupNotifications()
         startUpdateTimer()
+        setupNotificationObservers()
     }
     
     deinit {
         updateTimer?.invalidate()
+        menuUpdateTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
     }
         
     private func setupMenuBar() {
@@ -46,37 +45,20 @@ class MenuBarController: NSObject {
         
         if let button = statusItem.button {
             print("✅ Status item button created")
-            button.title = "⏱"  // Changed to stopwatch emoji
+            button.title = "⏱"
+//            button.image = NSImage(named: "MenuIcon")
+//            button.image?.isTemplate = true
             button.action = #selector(statusItemClicked)
             button.target = self
             button.sendAction(on: [.leftMouseDown, .rightMouseDown])
             
-            // Force redraw
             button.needsDisplay = true
-//            // TEMPORARY: Test drag window immediately
-//            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-//                self.testDragWindow()
-//            }
-
         } else {
             print("❌ Failed to create status item button!")
         }
         
         print("🎯 Menu bar setup complete")
     }
-//    // Temporary debug method
-//    private func testDragWindow() {
-//        if let screen = NSScreen.main {
-//            let center = NSPoint(x: screen.frame.midX, y: screen.frame.midY)
-//            let testWindow = DragWindow()
-//            testWindow.show(at: center)
-//            
-//            // Auto-hide after 3 seconds for testing
-//            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-//                testWindow.hide()
-//            }
-//        }
-//    }
     
     private func setupNotifications() {
         let center = UNUserNotificationCenter.current()
@@ -86,19 +68,81 @@ class MenuBarController: NSObject {
         }
     }
     
+    private func setupNotificationObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTimerCompleted(_:)),
+            name: .timerCompleted,
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTimerStarted(_:)),
+            name: .timerStarted,
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTimerCancelled(_:)),
+            name: .timerCancelled,
+            object: nil
+        )
+    }
+    
+    @objc private func handleTimerCompleted(_ notification: Notification) {
+        DispatchQueue.main.async {
+            print("🔄 Timer completed - refreshing menu if open")
+            self.refreshMenuIfOpen()
+            self.updateMenuBarTitle()
+        }
+    }
+    
+    @objc private func handleTimerStarted(_ notification: Notification) {
+        DispatchQueue.main.async {
+            print("🔄 Timer started - refreshing menu if open")
+            self.refreshMenuIfOpen()
+            self.updateMenuBarTitle()
+        }
+    }
+    
+    @objc private func handleTimerCancelled(_ notification: Notification) {
+        DispatchQueue.main.async {
+            print("🔄 Timer cancelled - refreshing menu if open")
+            self.refreshMenuIfOpen()
+            self.updateMenuBarTitle()
+        }
+    }
+    
     private func startUpdateTimer() {
         updateTimer?.invalidate()
         updateTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             DispatchQueue.main.async {
                 self?.updateMenuBarTitle()
                 
-                // If menu is open, refresh the menu items more frequently for smooth updates
                 if self?.statusItem.menu != nil {
                     self?.refreshMenuIfOpen()
                 }
             }
         }
         RunLoop.main.add(updateTimer!, forMode: .common)
+    }
+    
+    private func startMenuUpdateTimer() {
+        menuUpdateTimer?.invalidate()
+        
+        menuUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                if self?.statusItem.menu != nil {
+                    self?.refreshMenuIfOpen()
+                } else {
+                    self?.menuUpdateTimer?.invalidate()
+                    self?.menuUpdateTimer = nil
+                }
+            }
+        }
+        RunLoop.main.add(menuUpdateTimer!, forMode: .common)
     }
     
     private func updateMenuBarTitle() {
@@ -115,6 +159,7 @@ class MenuBarController: NSObject {
             let minutes = Int(timeRemaining) / 60
             let seconds = Int(timeRemaining) % 60
             newTitle = String(format: "%d:%02d", minutes, seconds)
+//            newTitle = formatHM(timeRemaining)
         } else {
             newTitle = "\(activeTimers.count)-⏱'s"
         }
@@ -123,9 +168,6 @@ class MenuBarController: NSObject {
             button.title = newTitle
             lastDisplayedTitle = newTitle
             print("📝 Menu bar updated: '\(newTitle)' - \(activeTimers.count) active timers")
-            
-            // Refresh menu if it's open to update the timer displays
-            refreshMenuIfOpen()
         }
     }
     
@@ -180,6 +222,44 @@ class MenuBarController: NSObject {
     }
     
     private func showMenu() {
+        let menu = createMenu()
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        
+        startMenuUpdateTimer()
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.detectMenuClose()
+        }
+    }
+    
+    private func formatHM(_ seconds: TimeInterval) -> String {
+        let mins = Int(seconds) / 60
+        let hrs = mins / 60
+        let m = mins % 60
+        
+        if hrs == 0 { return "\(m)m" }
+        return "\(hrs)h \(m)m"
+    }
+    private func formatMMSS(_ seconds: TimeInterval) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
+
+
+    
+    private func detectMenuClose() {
+        Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+            if self?.statusItem.menu == nil {
+                timer.invalidate()
+                self?.menuUpdateTimer?.invalidate()
+                self?.menuUpdateTimer = nil
+            }
+        }
+    }
+    
+    private func createMenu() -> NSMenu {
         let menu = NSMenu()
         
         let activeTimers = timerManager.getActiveTimers()
@@ -191,13 +271,13 @@ class MenuBarController: NSObject {
             
             for timer in activeTimers {
                 let timeRemaining = max(0, timer.endTime.timeIntervalSinceNow)
-                let minutes = Int(timeRemaining) / 60
-                let seconds = Int(timeRemaining) % 60
-                
-                let title = timer.title.isEmpty ? "Timer" : timer.title
-                // removed extra spaces and used consistent format
+//                let minutes = Int(timeRemaining) / 60
+//                let seconds = Int(timeRemaining) % 60
+//                
+//                let title = timer.title.isEmpty ? "Timer" : timer.title
                 let item = NSMenuItem(
-                    title: "\(title) - \(minutes):\(String(format: "%02d", seconds))",
+//                    title: "\(title) - \(minutes):\(String(format: "%02d", seconds))",
+                    title: "\(formatHM(timer.duration)) timer - \(formatMMSS(timeRemaining))",
                     action: #selector(cancelTimer(_:)),
                     keyEquivalent: ""
                 )
@@ -207,7 +287,6 @@ class MenuBarController: NSObject {
             }
             menu.addItem(NSMenuItem.separator())
             
-            // Add cancel all option if there are multiple timers
             if activeTimers.count > 1 {
                 let cancelAllItem = NSMenuItem(title: "Cancel All Timers", action: #selector(cancelAllTimers), keyEquivalent: "")
                 cancelAllItem.target = self
@@ -229,7 +308,7 @@ class MenuBarController: NSObject {
         ]
         
         for (title, seconds) in presets {
-            let item = NSMenuItem(title: title, action: #selector(quickTimerSelected(_:)), keyEquivalent: "") // Removed extra spaces
+            let item = NSMenuItem(title: title, action: #selector(quickTimerSelected(_:)), keyEquivalent: "")
             item.tag = seconds
             item.target = self
             menu.addItem(item)
@@ -237,12 +316,10 @@ class MenuBarController: NSObject {
         
         menu.addItem(NSMenuItem.separator())
         
-        // Settings section
         let settingsHeader = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
         settingsHeader.isEnabled = false
         menu.addItem(settingsHeader)
         
-        // Notification toggle
         let notificationsItem = NSMenuItem(
             title: "Enable Notifications",
             action: #selector(toggleNotifications(_:)),
@@ -252,7 +329,6 @@ class MenuBarController: NSObject {
         notificationsItem.target = self
         menu.addItem(notificationsItem)
         
-        // Sound toggle
         let soundItem = NSMenuItem(
             title: "Enable Sound",
             action: #selector(toggleSound(_:)),
@@ -271,50 +347,86 @@ class MenuBarController: NSObject {
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit TimeSling", action: #selector(quit), keyEquivalent: "q"))
         
-        statusItem.menu = menu
-        statusItem.button?.performClick(nil)
-        statusItem.menu = nil
+        return menu
     }
+    
     private func refreshMenuIfOpen() {
-        // If menu is currently open, update the timer items in real-time
         guard let menu = statusItem.menu else { return }
         
-        // Get current active timers
         let activeTimers = timerManager.getActiveTimers()
         
-        // Update only the timer items (skip headers, separators, and other items)
+        var indexesToRemove: [Int] = []
         var timerIndex = 0
-        var menuItemIndex = 0
         
-        for menuItem in menu.items {
-            // Look for timer items (they have representedObject set to UUID)
+        for (index, menuItem) in menu.items.enumerated() {
+            // FIXED: Remove unused timerId variable
             if menuItem.representedObject as? UUID != nil {
                 if timerIndex < activeTimers.count {
                     let timer = activeTimers[timerIndex]
                     let timeRemaining = max(0, timer.endTime.timeIntervalSinceNow)
-                    let minutes = Int(timeRemaining) / 60
-                    let seconds = Int(timeRemaining) % 60
+//                    let minutes = Int(timeRemaining) / 60
+//                    let seconds = Int(timeRemaining) % 60
+//                    
+//                    let title = timer.title.isEmpty ? "Timer" : timer.title
+//                    let newTitle = "\(title) - \(minutes):\(String(format: "%02d", seconds))"
+                    let newTitle = "\(formatHM(timer.duration)) timer - \(formatMMSS(timeRemaining))"
+
                     
-                    let title = timer.title.isEmpty ? "Timer" : timer.title
-                    let newTitle = "\(title) - \(minutes):\(String(format: "%02d", seconds))"
-                    
-                    // Only update if the title has changed (to prevent unnecessary redraws)
                     if menuItem.title != newTitle {
                         menuItem.title = newTitle
                     }
                     
                     timerIndex += 1
+                } else {
+                    indexesToRemove.append(index)
                 }
-                menuItemIndex += 1
+            }
+        }
+        
+        for index in indexesToRemove.reversed() {
+            menu.removeItem(at: index)
+        }
+        
+        if !indexesToRemove.isEmpty, let firstItem = menu.items.first {
+            let currentCount = timerManager.getActiveTimers().count
+            firstItem.title = "Active Timers (\(currentCount))"
+            
+            if currentCount <= 1 {
+                removeCancelAllOption(from: menu)
             }
         }
     }
     
+    private func removeCancelAllOption(from menu: NSMenu) {
+        for (index, item) in menu.items.enumerated() {
+            if item.title == "Cancel All Timers" {
+                menu.removeItem(at: index)
+                if index < menu.items.count && menu.items[index].isSeparatorItem {
+                    menu.removeItem(at: index)
+                }
+                break
+            }
+        }
+    }
     
     @objc private func cancelTimer(_ sender: NSMenuItem) {
         if let timerId = sender.representedObject as? UUID {
             timerManager.cancelTimer(id: timerId)
         }
+    }
+    
+    @objc private func cancelAllTimers() {
+        timerManager.cancelAllTimers()
+    }
+    
+    @objc private func toggleNotifications(_ sender: NSMenuItem) {
+        timerManager.toggleNotifications()
+        sender.state = timerManager.notificationsEnabled ? .on : .off
+    }
+
+    @objc private func toggleSound(_ sender: NSMenuItem) {
+        timerManager.toggleSound()
+        sender.state = timerManager.soundEnabled ? .on : .off
     }
     
     @objc private func quit() {
@@ -330,22 +442,182 @@ extension MenuBarController: UNUserNotificationCenterDelegate {
     }
 }
 
-// Drag Window
+
+// MARK: - DragWindow Styling - Circular Style
+//class DragWindow: NSPanel {
+//    private var textLayer = CATextLayer()
+//    private var currentDuration: TimeInterval = 0
+//    private var progressLayer: CAShapeLayer?
+//    private var backgroundRing: CAShapeLayer?
+//    
+//    init() {
+//        super.init(
+//            contentRect: NSRect(x: 0, y: 0, width: 90, height: 90),
+//            styleMask: [.borderless, .nonactivatingPanel],
+//            backing: .buffered,
+//            defer: false
+//        )
+//        
+//        self.isOpaque = false
+//        self.backgroundColor = .clear
+//        self.level = .screenSaver
+//        self.hasShadow = true
+//        self.ignoresMouseEvents = true
+//        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+//        
+//        setupUI()
+//    }
+//    
+//    private func setupUI() {
+//        let view = NSView(frame: NSRect(x: 0, y: 0, width: 90, height: 90))
+//        view.wantsLayer = true
+//        view.layer = CALayer()
+//        view.layer?.backgroundColor = NSColor.clear.cgColor
+//        view.layer?.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+//        
+//        // ---- Background circle ----
+//        let circle = CALayer()
+//        circle.frame = NSRect(x: 5, y: 5, width: 80, height: 80)
+//        circle.cornerRadius = 40
+//        circle.backgroundColor = NSColor.black.withAlphaComponent(0.6).cgColor
+//        circle.borderWidth = 1
+//        circle.borderColor = NSColor.white.withAlphaComponent(0.2).cgColor
+//        view.layer?.addSublayer(circle)
+//        
+//        // ---- Rings ----
+//        let center = CGPoint(x: 45, y: 45)
+//        let radius: CGFloat = 35
+//        let lineWidth: CGFloat = 6
+//        
+//        let path = NSBezierPath()
+//        path.appendArc(withCenter: center, radius: radius, startAngle: 0, endAngle: 360, clockwise: true)
+//        
+//        backgroundRing = CAShapeLayer()
+//        backgroundRing?.path = path.cgPath
+//        backgroundRing?.strokeColor = NSColor.white.withAlphaComponent(0.15).cgColor
+//        backgroundRing?.fillColor = .none
+//        backgroundRing?.lineWidth = lineWidth
+//        view.layer?.addSublayer(backgroundRing!)
+//        
+//        progressLayer = CAShapeLayer()
+//        progressLayer?.path = path.cgPath
+//        progressLayer?.strokeColor = NSColor.systemBlue.cgColor
+//        progressLayer?.fillColor = .none
+//        progressLayer?.lineWidth = lineWidth
+//        progressLayer?.strokeEnd = 0
+//        view.layer?.addSublayer(progressLayer!)
+//        
+//        // ---- CATextLayer label ----
+//        textLayer.frame = CGRect(x: 10, y: 28, width: 70, height: 30)
+//        textLayer.fontSize = 15
+//        textLayer.font = NSFont.boldSystemFont(ofSize: 15)
+//        textLayer.alignmentMode = .center
+//        textLayer.foregroundColor = NSColor.white.cgColor
+//        textLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+//        textLayer.isWrapped = false
+//        textLayer.string = ""
+//        view.layer?.addSublayer(textLayer)
+//        
+//        self.contentView = view
+//    }
+//    
+//    
+//    func show(at point: NSPoint) {
+//        self.setFrameOrigin(NSPoint(x: point.x - 45, y: point.y - 100))
+//        
+//        self.alphaValue = 0
+//        self.orderFront(nil)
+//        
+//        NSAnimationContext.runAnimationGroup { ctx in
+//            ctx.duration = 0.25
+//            self.animator().alphaValue = 1
+//        }
+//    }
+//    
+//    func update(at point: NSPoint, dragDistance: CGFloat) {
+//        self.setFrameOrigin(NSPoint(x: point.x - 45, y: point.y - 100))
+//        
+//        // Hide when too small
+//        if dragDistance < 5 {
+//            textLayer.string = ""
+//            progressLayer?.strokeEnd = 0
+//            return
+//        }
+//        
+//        // --- Duration calculation ---
+//        let adjusted = max(0, dragDistance - 20)
+//        
+//        // 100px = 30 minutes (same as your original mapping)
+//        let minutes = Int(adjusted / 100 * 90)
+//        
+//        // Clamp to max 4h 59m (299 min)
+//        let clampedMinutes = min(minutes, 4 * 60 + 59)
+//        currentDuration = TimeInterval(clampedMinutes * 60)
+//        
+//        // --- Convert to hours/minutes ---
+//        let hours = clampedMinutes / 60
+//        let mins = clampedMinutes % 60
+//        
+//        // --- Display logic exactly how you requested ---
+//        if clampedMinutes == 0 {
+//            textLayer.string = "⏱"
+//            
+//        } else if hours == 0 {
+//            // 1m - 59m
+//            textLayer.string = "\(mins)m"
+//            
+//        } else {
+//            // 1h 0m - 4h 59m
+//            textLayer.string = "\(hours)h \(mins)m"
+//        }
+//        
+//        // --- Ring Progress ---
+//        let maxDuration: CGFloat = 4 * 3600 // 4 hours
+//        let progress = min(CGFloat(currentDuration) / maxDuration, 1)
+//        progressLayer?.strokeEnd = progress
+//        
+//        // Color change (optional)
+//        if progress < 0.33 {
+//            progressLayer?.strokeColor = NSColor.systemGreen.cgColor
+//        } else if progress < 0.66 {
+//            progressLayer?.strokeColor = NSColor.systemBlue.cgColor
+//        } else {
+//            progressLayer?.strokeColor = NSColor.systemOrange.cgColor
+//        }
+//    }
+//
+//    
+//    func hide() {
+//        NSAnimationContext.runAnimationGroup { ctx in
+//            ctx.duration = 0.2
+//            self.animator().alphaValue = 0
+//        } completionHandler: {
+//            self.orderOut(nil)
+//        }
+//    }
+//    
+//    func getDuration() -> TimeInterval { currentDuration }
+//}
+//
+
+
+// MARK: - DragWindow - Character Version
 class DragWindow: NSPanel {
-    private let label = NSTextField(labelWithString: "")
+    private let characterImageView = NSImageView()
+    private let textLayer = CATextLayer()
     private var currentDuration: TimeInterval = 0
     
     init() {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 160, height: 70), // Slightly larger for better visibility
+            contentRect: NSRect(x: 0, y: 0, width: 120, height: 160),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
         
-        self.isOpaque = true
+        self.isOpaque = false
         self.backgroundColor = .clear
-        self.level = .screenSaver // Highest possible level - will show above everything
+        self.level = .screenSaver
         self.hasShadow = true
         self.ignoresMouseEvents = true
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
@@ -354,84 +626,98 @@ class DragWindow: NSPanel {
     }
     
     private func setupUI() {
-        let bgView = NSView(frame: NSRect(x: 0, y: 0, width: 160, height: 70))
+        let frame = NSRect(x: 0, y: 0, width: 120, height: 140)
+        let bgView = NSView(frame: frame)
         bgView.wantsLayer = true
-        bgView.layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.95).cgColor
-        bgView.layer?.cornerRadius = 12
-        bgView.layer?.borderWidth = 2
-        bgView.layer?.borderColor = NSColor.white.cgColor
+        bgView.layer = CALayer()
+        bgView.layer?.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
         
-        label.frame = NSRect(x: 0, y: 0, width: 160, height: 70)
-        label.font = .systemFont(ofSize: 22, weight: .heavy) // Larger font
-        label.textColor = .white
-        label.alignment = .center
-        label.backgroundColor = .clear
-        label.isBordered = false
-        label.isEditable = false
-        label.isSelectable = false
+        // Rounded background
+        let backgroundLayer = CALayer()
+        backgroundLayer.frame = NSRect(x: 10, y: 10, width: 100, height: 80)
+        backgroundLayer.cornerRadius = 20
+        backgroundLayer.backgroundColor = NSColor.black.withAlphaComponent(0.7).cgColor
+        backgroundLayer.borderWidth = 2
+        backgroundLayer.borderColor = NSColor.white.withAlphaComponent(0.25).cgColor
+        bgView.layer?.addSublayer(backgroundLayer)
         
-        bgView.addSubview(label)
+        // Character image
+        characterImageView.frame = NSRect(x: 20, y: 50, width: 80, height: 80)
+        characterImageView.imageScaling = .scaleProportionallyUpOrDown
+        characterImageView.alphaValue = 0.0
+        bgView.addSubview(characterImageView)
+        
+        // Timer text layer
+        textLayer.frame = CGRect(x: 10, y: 20, width: 100, height: 30)
+        textLayer.alignmentMode = .center
+        textLayer.font = NSFont.boldSystemFont(ofSize: 18)
+        textLayer.fontSize = 18
+        textLayer.foregroundColor = NSColor.white.cgColor
+        textLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+        textLayer.isWrapped = false
+        textLayer.string = ""
+        bgView.layer?.addSublayer(textLayer)
+        
         self.contentView = bgView
     }
     
     func show(at point: NSPoint) {
-        // Convert to screen coordinates properly
-        if let screen = NSScreen.main {
-            let screenRect = screen.visibleFrame
-            var windowPoint = NSPoint(x: point.x - 80, y: point.y - 100)
-            
-            // Ensure the window stays on screen
-            windowPoint.x = max(screenRect.minX + 10, min(windowPoint.x, screenRect.maxX - 170))
-            windowPoint.y = max(screenRect.minY + 10, min(windowPoint.y, screenRect.maxY - 80))
-            
-            self.setFrameOrigin(windowPoint)
-        } else {
-            self.setFrameOrigin(NSPoint(x: point.x - 80, y: point.y - 100))
-        }
+        let offset = NSPoint(x: point.x - 60, y: point.y - 140)
+        self.setFrameOrigin(offset)
         
-        self.alphaValue = 0.0
+        characterImageView.alphaValue = 0.0
+        textLayer.string = ""
+        currentDuration = 0
+        
+        self.alphaValue = 0
         self.orderFront(nil)
         
-        // Animate in for better visibility
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.1
-            self.animator().alphaValue = 1.0
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.25
+            self.animator().alphaValue = 1
         }
-        
-        label.stringValue = "DRAG DOWN"
-        print("🎯 Drag window shown at \(point)")
     }
     
     func update(at point: NSPoint, dragDistance: CGFloat) {
-        // Update position to follow cursor
-        if let screen = NSScreen.main {
-            let screenRect = screen.visibleFrame
-            var windowPoint = NSPoint(x: point.x - 80, y: point.y - 100)
-            
-            // Ensure the window stays on screen
-            windowPoint.x = max(screenRect.minX + 10, min(windowPoint.x, screenRect.maxX - 170))
-            windowPoint.y = max(screenRect.minY + 10, min(windowPoint.y, screenRect.maxY - 80))
-            
-            self.setFrameOrigin(windowPoint)
+        self.setFrameOrigin(NSPoint(x: point.x - 60, y: point.y - 140))
+        
+        if dragDistance < 5 {
+            textLayer.string = ""
+            characterImageView.alphaValue = 0.0
+            currentDuration = 0
+            return
         }
         
-        // Calculate duration: 100 pixels = 30 minutes
-        let minutes = Int(dragDistance / 100.0 * 30.0)
-        currentDuration = TimeInterval(min(minutes * 60, 240 * 60)) // Max 4 hours
+        // Calculate duration
+        let adjusted = max(0, dragDistance - 20)
+        let minutes = Int(adjusted / 100 * 90)
+
+        // Clamp to max 4h 59m
+        let clampedMinutes = min(minutes, 4 * 60 + 59)
+        currentDuration = TimeInterval(clampedMinutes * 60)
         
-        let hours = Int(currentDuration) / 3600
-        let mins = (Int(currentDuration) % 3600) / 60
+        let hours = clampedMinutes / 60
+        let mins = clampedMinutes % 60
+        
+        // Character logic
+        characterImageView.alphaValue = 1
         
         if currentDuration < 60 {
-            label.stringValue = "DRAG DOWN"
-        } else if hours > 0 {
-            label.stringValue = "\(hours)h \(mins)m"
+            characterImageView.image = NSImage(named: "DragIconWorried")
+            textLayer.string = "⏱"
+            
+        } else if clampedMinutes < 30 {
+            characterImageView.image = NSImage(named: "DragIconHappy")
+            textLayer.string = "\(mins)m"
+            
+        } else if hours >= 0 {
+            characterImageView.image = NSImage(named: "DragIconTeeth")
+            textLayer.string = "\(hours)h \(mins)m"
+            
         } else {
-            label.stringValue = "\(mins)m"
+            characterImageView.image = NSImage(named: "DragIconHappy")
+            textLayer.string = "\(mins)m"
         }
-        
-        // Keep window on top
-        self.orderFront(nil)
     }
     
     func getDuration() -> TimeInterval {
@@ -439,13 +725,51 @@ class DragWindow: NSPanel {
     }
     
     func hide() {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.1
-            self.animator().alphaValue = 0.0
+        characterImageView.alphaValue = 0.0
+        textLayer.string = ""
+        currentDuration = 0
+        
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.18
+            self.animator().alphaValue = 0
         } completionHandler: {
             self.orderOut(nil)
         }
-        print("🎯 Drag window hidden")
+    }
+}
+
+
+
+
+
+
+
+// Extension for NSBezierPath to CGPath conversion
+extension NSBezierPath {
+    var cgPath: CGPath {
+        let path = CGMutablePath()
+        var points = [CGPoint](repeating: .zero, count: 3)
+        
+        for i in 0..<self.elementCount {
+            let type = self.element(at: i, associatedPoints: &points)
+            switch type {
+            case .moveTo:
+                path.move(to: points[0])
+            case .lineTo:
+                path.addLine(to: points[0])
+            case .curveTo:
+                path.addCurve(to: points[2], control1: points[0], control2: points[1])
+            case .closePath:
+                path.closeSubpath()
+            case .cubicCurveTo:
+                path.addCurve(to: points[2], control1: points[0], control2: points[1])
+            case .quadraticCurveTo:
+                path.addQuadCurve(to: points[1], control: points[0])
+            @unknown default:
+                break
+            }
+        }
+        return path
     }
 }
 
@@ -455,13 +779,12 @@ extension NSStatusBarButton {
         print("🖱 Mouse down detected")
         
         let initialLocation = event.locationInWindow
-        let dragThreshold: CGFloat = 3.0 // Lower threshold
+        let dragThreshold: CGFloat = 3.0
         
         var isDragging = false
         var dragWindow: DragWindow?
         var eventMonitor: Any?
         
-        // Store initial time to distinguish click from drag
         let initialTime = event.timestamp
         
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] trackEvent in
@@ -476,7 +799,6 @@ extension NSStatusBarButton {
                     isDragging = true
                     print("🎯 Drag started! Distance: \(distance)")
                     
-                    // Get the mouse position in screen coordinates
                     let screenPoint = window.convertPoint(toScreen: currentLocation)
                     dragWindow = DragWindow()
                     dragWindow?.show(at: screenPoint)
@@ -487,7 +809,7 @@ extension NSStatusBarButton {
                     dragWin.update(at: screenPoint, dragDistance: deltaY)
                 }
                 
-                return nil // Consume the event
+                return nil
                 
             } else if trackEvent.type == .leftMouseUp {
                 if let monitor = eventMonitor {
@@ -508,7 +830,6 @@ extension NSStatusBarButton {
                     }
                 } else {
                     print("👆 Simple click detected")
-                    // Only trigger the menu on simple clicks (not drags)
                     self.sendAction(self.action, to: self.target)
                 }
                 
@@ -518,7 +839,6 @@ extension NSStatusBarButton {
             return trackEvent
         }
         
-        // Also track global events to catch edge cases
         var globalMonitor: Any?
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { globalEvent in
             if globalEvent.type == .leftMouseUp {
@@ -532,3 +852,4 @@ extension NSStatusBarButton {
         }
     }
 }
+
