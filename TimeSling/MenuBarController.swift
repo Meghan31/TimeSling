@@ -1,7 +1,8 @@
+//
+//
 //  MenuBarController.swift
 //  TimeSling
-//
-//  Created by Meghasrivardhan Pulakhandam on 11/23/25.
+//  FIXED: No borders, no focus ring, better spacing
 //
 
 import Cocoa
@@ -23,6 +24,8 @@ class MenuBarController: NSObject {
     private let timerManager = TimerManager.shared
     private var lastDisplayedTitle: String = ""
     private var numberRollerWindow: NumberRollerWindow?
+    private var editWindow: TimerEditWindow?
+    private var descriptionWindow: TimerDescriptionWindow?
     
     override init() {
         super.init()
@@ -30,6 +33,9 @@ class MenuBarController: NSObject {
         setupNotifications()
         startUpdateTimer()
         setupNotificationObservers()
+        
+        setupMenuRefreshObserver()
+
     }
     
     deinit {
@@ -37,74 +43,71 @@ class MenuBarController: NSObject {
         menuUpdateTimer?.invalidate()
         NotificationCenter.default.removeObserver(self)
     }
+    
+//    func refreshMenu() {
+//        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+//            self.showMenu()
+//        }
+//    }
+    func refreshMenu() {
+        // Simple refresh - just close and let user reopen
+        self.statusItem.menu?.cancelTracking()
+    }
+    
+    private func setupMenuRefreshObserver() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMenuRefreshRequest),
+            name: Notification.Name("RefreshMenu"),
+            object: nil
+        )
+    }
+
+    @objc private func handleMenuRefreshRequest() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            self.showMenu()
+        }
+    }
         
     private func setupMenuBar() {
-        print("🔄 Setting up menu bar...")
-        
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
         if let button = statusItem.button {
-            print("✅ Status item button created")
-            
-            // Try multiple ways to load the icon
             var icon: NSImage?
-            
-            // Method 1: Try loading from Assets
             icon = NSImage(named: "MenuIcon")
-            print("📦 Asset catalog load: \(icon != nil ? "SUCCESS" : "FAILED")")
             
-            // Method 2: Try loading from app bundle
             if icon == nil {
                 if let bundlePath = Bundle.main.path(forResource: "MenuIcon", ofType: "png") {
                     icon = NSImage(contentsOfFile: bundlePath)
-                    print("📂 Bundle path load: \(icon != nil ? "SUCCESS" : "FAILED")")
                 }
             }
             
-            // Method 3: Create a simple system symbol as test
             if icon == nil {
                 icon = NSImage(systemSymbolName: "hourglass", accessibilityDescription: "Timer")
-                print("🔣 Using SF Symbol fallback")
             }
             
             if let loadedIcon = icon {
-                // Set proper size for menu bar
                 loadedIcon.size = NSSize(width: 18, height: 18)
                 loadedIcon.isTemplate = true
-                
                 button.image = loadedIcon
-                button.imagePosition = .imageOnly
-                button.title = ""  // Clear any text
-                
-                print("✅ Icon set successfully")
-                print("   - Icon size: \(loadedIcon.size)")
-                print("   - Is template: \(loadedIcon.isTemplate)")
-                print("   - Button image: \(button.image != nil)")
+//                button.imagePosition = .imageOnly
+                button.title = ""
             } else {
-                // Ultimate fallback to emoji
                 button.title = "⏱"
                 button.image = nil
-                print("⚠️ All icon loading methods failed, using emoji fallback")
             }
             
             button.action = #selector(statusItemClicked)
             button.target = self
             button.sendAction(on: [.leftMouseDown, .rightMouseDown])
-            
             button.needsDisplay = true
-        } else {
-            print("❌ Failed to create status item button!")
         }
-        
-        print("🎯 Menu bar setup complete")
     }
     
     private func setupNotifications() {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            print(granted ? "✓ Notifications enabled" : "✗ Notifications disabled")
-        }
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
     
     private func setupNotificationObservers() {
@@ -132,7 +135,6 @@ class MenuBarController: NSObject {
     
     @objc private func handleTimerCompleted(_ notification: Notification) {
         DispatchQueue.main.async {
-            print("🔄 Timer completed - refreshing menu if open")
             self.refreshMenuIfOpen()
             self.updateMenuBarTitle()
         }
@@ -140,7 +142,6 @@ class MenuBarController: NSObject {
     
     @objc private func handleTimerStarted(_ notification: Notification) {
         DispatchQueue.main.async {
-            print("🔄 Timer started - refreshing menu if open")
             self.refreshMenuIfOpen()
             self.updateMenuBarTitle()
         }
@@ -148,7 +149,6 @@ class MenuBarController: NSObject {
     
     @objc private func handleTimerCancelled(_ notification: Notification) {
         DispatchQueue.main.async {
-            print("🔄 Timer cancelled - refreshing menu if open")
             self.refreshMenuIfOpen()
             self.updateMenuBarTitle()
         }
@@ -191,7 +191,6 @@ class MenuBarController: NSObject {
         var newTitle: String
         
         if activeTimers.isEmpty {
-            // Show icon only when no timers
             if button.image == nil {
                 if let icon = NSImage(named: "MenuIcon") {
                     icon.isTemplate = true
@@ -199,10 +198,9 @@ class MenuBarController: NSObject {
                 }
             }
             button.title = ""
-            newTitle = "icon"  // For tracking purposes
+            newTitle = "icon"
         } else if activeTimers.count == 1 {
-            // Show countdown for single timer
-            button.image = nil  // Remove icon
+            button.image = nil
             let timer = activeTimers[0]
             let timeRemaining = max(0, timer.endTime.timeIntervalSinceNow)
             let minutes = Int(timeRemaining) / 60
@@ -210,15 +208,13 @@ class MenuBarController: NSObject {
             newTitle = String(format: "%d:%02d", minutes, seconds)
             button.title = newTitle
         } else {
-            // Show count for multiple timers
-            button.image = nil  // Remove icon
+            button.image = nil
             newTitle = "\(activeTimers.count) timers"
             button.title = newTitle
         }
         
         if newTitle != lastDisplayedTitle {
             lastDisplayedTitle = newTitle
-            print("📝 Menu bar updated: '\(newTitle)' - \(activeTimers.count) active timers")
         }
     }
     
@@ -241,6 +237,7 @@ class MenuBarController: NSObject {
         
         let presets: [(String, Int)] = [
             ("5 minutes", 5 * 60),
+            ("10 minutes", 10 * 60),
             ("15 minutes", 15 * 60),
             ("30 minutes", 30 * 60),
             ("1 hour", 60 * 60),
@@ -256,7 +253,6 @@ class MenuBarController: NSObject {
         
         menu.addItem(NSMenuItem.separator())
         
-        // Add custom timer option with number roller
         let customTimerItem = NSMenuItem(title: "Custom Timer...", action: #selector(showNumberRoller), keyEquivalent: "")
         customTimerItem.target = self
         menu.addItem(customTimerItem)
@@ -268,7 +264,7 @@ class MenuBarController: NSObject {
         menu.addItem(dragItem)
         
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit TimeSling", action: #selector(quit), keyEquivalent: "q"))
+//        menu.addItem(NSMenuItem(title: "Quit TimeSling", action: #selector(quit), keyEquivalent: "q"))
         
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
@@ -280,10 +276,8 @@ class MenuBarController: NSObject {
     }
     
     @objc private func showNumberRoller() {
-        // Close existing window if any
         numberRollerWindow?.close()
         
-        // Create new number roller window
         numberRollerWindow = NumberRollerWindow(
             onSetTimer: { [weak self] duration in
                 let hours = Int(duration) / 3600
@@ -299,7 +293,6 @@ class MenuBarController: NSObject {
                 }
                 
                 self?.timerManager.startTimer(duration: duration, title: title)
-                print("⏱ Custom timer started: \(title) (\(Int(duration))s)")
             },
             onClose: { [weak self] in
                 self?.numberRollerWindow?.close()
@@ -359,13 +352,24 @@ class MenuBarController: NSObject {
             
             for timer in activeTimers {
                 let timeRemaining = max(0, timer.endTime.timeIntervalSinceNow)
-                let item = NSMenuItem(
-                    title: "\(formatHM(timer.duration)) timer - \(formatMMSS(timeRemaining))",
-                    action: #selector(cancelTimer(_:)),
-                    keyEquivalent: ""
+                
+                let timerView = TimerMenuItemView(
+                    timer: timer,
+                    timeRemaining: timeRemaining,
+                    onDescription: { [weak self] in
+                        self?.showDescriptionWindow(for: timer.id)
+                    },
+                    onEdit: { [weak self] in
+                        self?.showEditWindow(for: timer.id)
+                    },
+                    onDelete: { [weak self] in
+                        self?.timerManager.cancelTimer(id: timer.id)
+                    }
                 )
+                
+                let item = NSMenuItem()
+                item.view = timerView
                 item.representedObject = timer.id
-                item.target = self
                 menu.addItem(item)
             }
             menu.addItem(NSMenuItem.separator())
@@ -399,7 +403,6 @@ class MenuBarController: NSObject {
         
         menu.addItem(NSMenuItem.separator())
         
-        // Add custom timer option with number roller
         let customTimerItem = NSMenuItem(title: "Custom Timer...", action: #selector(showNumberRoller), keyEquivalent: "")
         customTimerItem.target = self
         menu.addItem(customTimerItem)
@@ -445,56 +448,13 @@ class MenuBarController: NSObject {
         
         let activeTimers = timerManager.getActiveTimers()
         
-        var indexesToRemove: [Int] = []
-        var timerIndex = 0
-        
-        for (index, menuItem) in menu.items.enumerated() {
-            if menuItem.representedObject as? UUID != nil {
-                if timerIndex < activeTimers.count {
-                    let timer = activeTimers[timerIndex]
-                    let timeRemaining = max(0, timer.endTime.timeIntervalSinceNow)
-                    let newTitle = "\(formatHM(timer.duration)) timer - \(formatMMSS(timeRemaining))"
-                    
-                    if menuItem.title != newTitle {
-                        menuItem.title = newTitle
-                    }
-                    
-                    timerIndex += 1
-                } else {
-                    indexesToRemove.append(index)
-                }
+        for menuItem in menu.items {
+            if let timerId = menuItem.representedObject as? UUID,
+               let timerView = menuItem.view as? TimerMenuItemView,
+               let timer = activeTimers.first(where: { $0.id == timerId }) {
+                let timeRemaining = max(0, timer.endTime.timeIntervalSinceNow)
+                timerView.updateTime(timeRemaining)
             }
-        }
-        
-        for index in indexesToRemove.reversed() {
-            menu.removeItem(at: index)
-        }
-        
-        if !indexesToRemove.isEmpty, let firstItem = menu.items.first {
-            let currentCount = timerManager.getActiveTimers().count
-            firstItem.title = "Active Timers (\(currentCount))"
-            
-            if currentCount <= 1 {
-                removeCancelAllOption(from: menu)
-            }
-        }
-    }
-    
-    private func removeCancelAllOption(from menu: NSMenu) {
-        for (index, item) in menu.items.enumerated() {
-            if item.title == "Cancel All Timers" {
-                menu.removeItem(at: index)
-                if index < menu.items.count && menu.items[index].isSeparatorItem {
-                    menu.removeItem(at: index)
-                }
-                break
-            }
-        }
-    }
-    
-    @objc private func cancelTimer(_ sender: NSMenuItem) {
-        if let timerId = sender.representedObject as? UUID {
-            timerManager.cancelTimer(id: timerId)
         }
     }
     
@@ -515,6 +475,33 @@ class MenuBarController: NSObject {
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
     }
+    
+    private func showDescriptionWindow(for timerId: UUID) {
+        guard let timer = timerManager.getTimer(id: timerId) else { return }
+        
+        descriptionWindow?.close()
+        descriptionWindow = TimerDescriptionWindow(timer: timer)
+        descriptionWindow?.showWindow()
+    }
+    
+    private func showEditWindow(for timerId: UUID) {
+        guard let timer = timerManager.getTimer(id: timerId) else { return }
+        
+        editWindow?.close()
+        editWindow = TimerEditWindow(
+            timer: timer,
+            onSave: { [weak self] name, description in
+                self?.timerManager.updateTimer(id: timerId, customName: name, description: description)
+                self?.editWindow?.close()
+                self?.editWindow = nil
+            },
+            onCancel: { [weak self] in
+                self?.editWindow?.close()
+                self?.editWindow = nil
+            }
+        )
+        editWindow?.showWindow()
+    }
 }
 
 extension MenuBarController: UNUserNotificationCenterDelegate {
@@ -526,10 +513,530 @@ extension MenuBarController: UNUserNotificationCenterDelegate {
 }
 
 
+// MARK: - Timer Menu Item View - FIXED
+class TimerMenuItemView: NSView {
+    private let containerView = NSView()
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let buttonStackView = NSStackView()
+    private let descriptionButton = NSButton()
+    private let editButton = NSButton()
+    private let deleteButton = NSButton()
+    
+    private var onDescription: (() -> Void)?
+    private var onEdit: (() -> Void)?
+    private var onDelete: (() -> Void)?
+    private let timer: TimerItem
+    
+    init(timer: TimerItem, timeRemaining: TimeInterval, onDescription: @escaping () -> Void, onEdit: @escaping () -> Void, onDelete: @escaping () -> Void) {
+        self.timer = timer
+        self.onDescription = onDescription
+        self.onEdit = onEdit
+        self.onDelete = onDelete
+        
+        super.init(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        setupView(timeRemaining: timeRemaining)
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    private func setupView(timeRemaining: TimeInterval) {
+        containerView.frame = self.bounds
+        addSubview(containerView)
+        
+        // Timer label - proper spacing
+        titleLabel.frame = NSRect(x: 12, y: 4, width: 180, height: 16)
+        titleLabel.font = .systemFont(ofSize: 13)
+        titleLabel.stringValue = formatTimerText(timeRemaining)
+        titleLabel.textColor = .labelColor
+        titleLabel.isEditable = false
+        titleLabel.isBordered = false
+        titleLabel.backgroundColor = .clear
+        containerView.addSubview(titleLabel)
+        
+        // Button stack - fixed positioning
+        buttonStackView.frame = NSRect(x: 200, y: 2, width: 72, height: 20)
+        buttonStackView.orientation = .horizontal
+        buttonStackView.spacing = 8
+        buttonStackView.distribution = .fillEqually
+        containerView.addSubview(buttonStackView)
+        
+        // Configure buttons
+        configureButton(descriptionButton, iconName: "InfoIcon", tooltip: "View details")
+        configureButton(editButton, iconName: "EditIcon", tooltip: "Edit timer")
+        configureButton(deleteButton, iconName: "DeleteIcon", tooltip: "Delete timer")
+        
+        // Add buttons to stack
+        buttonStackView.addArrangedSubview(descriptionButton)
+        buttonStackView.addArrangedSubview(editButton)
+        buttonStackView.addArrangedSubview(deleteButton)
+        
+        // Set actions
+        descriptionButton.target = self
+        descriptionButton.action = #selector(descriptionClicked)
+        
+        editButton.target = self
+        editButton.action = #selector(editClicked)
+        
+        deleteButton.target = self
+        deleteButton.action = #selector(deleteClicked)
+    }
+    
+    private func configureButton(_ button: NSButton, iconName: String, tooltip: String) {
+        button.wantsLayer = true
+        button.isBordered = false
+        button.bezelStyle = .shadowlessSquare
+        button.imagePosition = .imageOnly
+        button.toolTip = tooltip
+        button.focusRingType = .none
+        
+        // Make icons larger and pure white
+        let iconSize: CGFloat = 16
+        
+        if let customIcon = NSImage(named: iconName) {
+            customIcon.size = NSSize(width: iconSize, height: iconSize)
+            customIcon.isTemplate = false
+            
+            button.image = customIcon
+            button.contentTintColor = nil
+            
+        } else if let fallback = NSImage(
+            systemSymbolName: iconName == "InfoIcon" ? "info.circle" :
+                iconName == "EditIcon" ? "pencil" :
+                iconName == "DeleteIcon" ? "xmark.circle" :
+                "questionmark.circle",
+            accessibilityDescription: tooltip
+        ) {
+            fallback.size = NSSize(width: iconSize, height: iconSize)
+            fallback.isTemplate = true
+            button.image = fallback
+            button.contentTintColor = .white
+        }
+        
+        // Remove gray box — fully transparent
+        button.layer?.backgroundColor = NSColor.clear.cgColor
+        
+        // Hover effect — subtle glowing translucent white
+        let tracking = NSTrackingArea(
+            rect: button.bounds,
+            options: [.mouseEnteredAndExited, .activeAlways],
+            owner: button,
+            userInfo: nil
+        )
+        button.addTrackingArea(tracking)
+    }
+    
+    private func formatTimerText(_ timeRemaining: TimeInterval) -> String {
+        let duration = timer.duration
+        let mins = Int(duration) / 60
+        let hrs = mins / 60
+        let m = mins % 60
+        
+        let durationText = hrs == 0 ? "\(m)m" : "\(hrs)h \(m)m"
+        
+        let remainingMins = Int(timeRemaining) / 60
+        let remainingSecs = Int(timeRemaining) % 60
+        let remainingText = String(format: "%d:%02d", remainingMins, remainingSecs)
+        
+        return "\(durationText) timer - \(remainingText)"
+    }
+    
+    func updateTime(_ timeRemaining: TimeInterval) {
+        titleLabel.stringValue = formatTimerText(timeRemaining)
+    }
+    
+    @objc private func descriptionClicked() {
+        onDescription?()
+    }
+    
+    @objc private func editClicked() {
+        onEdit?()
+    }
+    
+    
+    @objc private func deleteClicked() {
+        // Call the delete action
+        onDelete?()
+        
+        // Simple approach: just close the menu and let user reopen it
+        // The menu will show updated state next time user clicks
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            if let menu = self.enclosingMenuItem?.menu {
+                menu.cancelTracking()
+            }
+        }
+    }
+}
+
+// MARK: - Button Hover Extension
+extension NSButton {
+    open override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        if self.isEnabled {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.15
+                self.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.18).cgColor
+                self.contentTintColor = .white
+            }
+        }
+    }
+
+    open override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            self.layer?.backgroundColor = NSColor.clear.cgColor
+            self.contentTintColor = .white
+        }
+    }
+}
+
+
+
+// MARK: - Timer Description Window - TOP-MIDDLE POSITION
+class TimerDescriptionWindow: NSPanel {
+    init(timer: TimerItem) {
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 150),
+            styleMask: [.titled, .closable, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        
+        // Format the duration for the window title
+        let duration = timer.duration
+        let minutes = Int(duration) / 60
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+        
+        let durationText: String
+        if hours > 0 {
+            durationText = "\(hours)h \(remainingMinutes)m"
+        } else {
+            durationText = "\(minutes)m"
+        }
+        
+        self.title = "\(durationText) - Timer Description"
+        self.level = .floating
+        self.isMovableByWindowBackground = true
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        
+        setupUI(timer: timer)
+    }
+    
+    private func setupUI(timer: TimerItem) {
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 150))
+        
+        let titleLabel = NSTextField(labelWithString: timer.customName.isEmpty ? "Give a Title!" : timer.customName)
+        titleLabel.frame = NSRect(x: 20, y: 95, width: 260, height: 20)
+        titleLabel.font = .boldSystemFont(ofSize: 14)
+        titleLabel.alignment = .center
+        contentView.addSubview(titleLabel)
+        
+        let descLabel = NSTextField(wrappingLabelWithString: timer.description.isEmpty ? "No description" : timer.description)
+        descLabel.frame = NSRect(x: 20, y: 40, width: 260, height: 50)
+        descLabel.font = .systemFont(ofSize: 12)
+        descLabel.alignment = .center
+        descLabel.textColor = .secondaryLabelColor
+        contentView.addSubview(descLabel)
+        
+        let closeButton = NSButton(title: "OK", target: self, action: #selector(closeWindow))
+        closeButton.frame = NSRect(x: 110, y: 10, width: 80, height: 25)
+        closeButton.bezelStyle = .rounded
+        closeButton.keyEquivalent = "\r"
+        contentView.addSubview(closeButton)
+        
+        self.contentView = contentView
+    }
+    
+    func showWindow() {
+        // Position at TOP MIDDLE of screen
+        if let screen = NSScreen.main {
+            let screenRect = screen.visibleFrame
+            let windowWidth: CGFloat = 300
+            let windowHeight: CGFloat = 150
+            let padding: CGFloat = 60 // More padding from top
+            
+            let x = screenRect.midX - (windowWidth / 2)
+            let y = screenRect.maxY - windowHeight - padding
+            
+            self.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: true)
+        }
+        
+        self.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    @objc private func closeWindow() {
+        self.close()
+    }
+}
+
+
+
+// MARK: - Timer Edit Window - FIXED ERRORS
+class TimerEditWindow: NSPanel {
+    private let nameField = NSTextField()
+    private let descriptionTextView: NSTextView // Changed from descriptionField
+    private var onSave: ((String, String) -> Void)?
+    private var onCancel: (() -> Void)?
+    private let timer: TimerItem
+    private var textChangeObserver: NSObjectProtocol?
+    
+    init(timer: TimerItem, onSave: @escaping (String, String) -> Void, onCancel: @escaping () -> Void) {
+        self.timer = timer
+        self.onSave = onSave
+        self.onCancel = onCancel
+        self.descriptionTextView = NSTextView() // Initialize here
+        
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 260),
+            styleMask: [.titled, .closable, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        
+        self.title = "Edit - " + timer.title
+        self.level = .floating
+        self.isMovableByWindowBackground = true
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        
+        setupUI(timer: timer)
+    }
+    
+    deinit {
+        if let observer = textChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+    
+    private func setupUI(timer: TimerItem) {
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 260))
+        contentView.wantsLayer = true
+        contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        
+//        // Title label
+//        let titleLabel = NSTextField(labelWithString: "Edit Timer")
+//        titleLabel.frame = NSRect(x: 0, y: 220, width: 400, height: 24)
+//        titleLabel.font = .boldSystemFont(ofSize: 16)
+//        titleLabel.alignment = .center
+//        titleLabel.isEditable = false
+//        titleLabel.isBordered = false
+//        titleLabel.backgroundColor = .clear
+//        contentView.addSubview(titleLabel)
+        
+        // Timer Name section
+        let nameLabel = NSTextField(labelWithString: "Timer Name:")
+        nameLabel.frame = NSRect(x: 40, y: 200, width: 120, height: 20)
+        nameLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        nameLabel.isEditable = false
+        nameLabel.isBordered = false
+        nameLabel.backgroundColor = .clear
+        nameLabel.textColor = .labelColor
+        contentView.addSubview(nameLabel)
+        
+        nameField.frame = NSRect(x: 160, y: 200, width: 200, height: 24)
+        nameField.font = .systemFont(ofSize: 13)
+        nameField.placeholderString = timer.title
+        nameField.stringValue = timer.customName
+        nameField.isBezeled = true
+        nameField.bezelStyle = .roundedBezel
+        contentView.addSubview(nameField)
+        
+        // Description section - FIXED MULTI-LINE
+        let descLabel = NSTextField(labelWithString: "Description:")
+        descLabel.frame = NSRect(x: 40, y: 160, width: 120, height: 20)
+        descLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        descLabel.isEditable = false
+        descLabel.isBordered = false
+        descLabel.backgroundColor = .clear
+        descLabel.textColor = .labelColor
+        contentView.addSubview(descLabel)
+        
+        let descriptionScrollView = NSScrollView(frame: NSRect(x: 160, y: 120, width: 200, height: 70))
+        descriptionScrollView.hasVerticalScroller = true
+        descriptionScrollView.hasHorizontalScroller = false
+        descriptionScrollView.autohidesScrollers = true
+        descriptionScrollView.borderType = .bezelBorder
+        descriptionScrollView.backgroundColor = .controlBackgroundColor
+        
+        // Configure the existing text view
+        descriptionTextView.frame = NSRect(x: 0, y: 0, width: 184, height: 70)
+        descriptionTextView.font = .systemFont(ofSize: 13)
+        descriptionTextView.minSize = NSSize(width: 0, height: 0)
+        descriptionTextView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        descriptionTextView.isVerticallyResizable = true
+        descriptionTextView.isHorizontallyResizable = false
+        descriptionTextView.autoresizingMask = [.width]
+        
+        // Configure text container
+        descriptionTextView.textContainer?.containerSize = NSSize(width: 184, height: CGFloat.greatestFiniteMagnitude)
+        descriptionTextView.textContainer?.widthTracksTextView = true
+        descriptionTextView.textContainer?.heightTracksTextView = false
+        
+        // Set initial text
+        if timer.description.isEmpty {
+            descriptionTextView.string = "Add a description for your timer..."
+            descriptionTextView.textColor = .placeholderTextColor
+        } else {
+            descriptionTextView.string = timer.description
+            descriptionTextView.textColor = .textColor
+        }
+        
+        // Set up text change notifications for placeholder
+        textChangeObserver = NotificationCenter.default.addObserver(
+            forName: NSText.didChangeNotification,
+            object: descriptionTextView,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            
+            if self.descriptionTextView.textColor == .placeholderTextColor {
+                // User started typing, clear placeholder
+                if !self.descriptionTextView.string.isEmpty {
+                    self.descriptionTextView.textColor = .textColor
+                    self.descriptionTextView.string = ""
+                }
+            } else if self.descriptionTextView.string.isEmpty {
+                // User cleared all text, show placeholder
+                self.descriptionTextView.textColor = .placeholderTextColor
+                self.descriptionTextView.string = "Add a description for your timer..."
+            }
+        }
+        
+        descriptionScrollView.documentView = descriptionTextView
+        contentView.addSubview(descriptionScrollView)
+        
+        // Timer information section
+        let infoLabel = NSTextField(labelWithString: "Timer Information:")
+        infoLabel.frame = NSRect(x: 40, y: 90, width: 120, height: 20)
+        infoLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        infoLabel.isEditable = false
+        infoLabel.isBordered = false
+        infoLabel.backgroundColor = .clear
+        infoLabel.textColor = .labelColor
+        contentView.addSubview(infoLabel)
+        
+        // Original duration
+        let durationLabel = NSTextField(labelWithString: "Duration:")
+        durationLabel.frame = NSRect(x: 60, y: 70, width: 80, height: 20)
+        durationLabel.font = .systemFont(ofSize: 13)
+        durationLabel.isEditable = false
+        durationLabel.isBordered = false
+        durationLabel.backgroundColor = .clear
+        durationLabel.textColor = .secondaryLabelColor
+        contentView.addSubview(durationLabel)
+        
+        let durationValue = NSTextField(labelWithString: formatDuration(timer.duration))
+        durationValue.frame = NSRect(x: 160, y: 70, width: 200, height: 20)
+        durationValue.font = .systemFont(ofSize: 13)
+        durationValue.isEditable = false
+        durationValue.isBordered = false
+        durationValue.backgroundColor = .clear
+        durationValue.textColor = .secondaryLabelColor
+        contentView.addSubview(durationValue)
+        
+        // End time
+        let endTimeLabel = NSTextField(labelWithString: "Ends at:")
+        endTimeLabel.frame = NSRect(x: 60, y: 50, width: 80, height: 20)
+        endTimeLabel.font = .systemFont(ofSize: 13)
+        endTimeLabel.isEditable = false
+        endTimeLabel.isBordered = false
+        endTimeLabel.backgroundColor = .clear
+        endTimeLabel.textColor = .secondaryLabelColor
+        contentView.addSubview(endTimeLabel)
+        
+        let endTimeValue = NSTextField(labelWithString: formatEndTime(timer.endTime))
+        endTimeValue.frame = NSRect(x: 160, y: 50, width: 200, height: 20)
+        endTimeValue.font = .systemFont(ofSize: 13)
+        endTimeValue.isEditable = false
+        endTimeValue.isBordered = false
+        endTimeValue.backgroundColor = .clear
+        endTimeValue.textColor = .secondaryLabelColor
+        contentView.addSubview(endTimeValue)
+        
+        // Buttons with proper gap
+        let cancelButton = NSButton(title: "Cancel", target: self, action: #selector(cancelClicked))
+        cancelButton.frame = NSRect(x: 180, y: 10, width: 80, height: 28)
+        cancelButton.bezelStyle = .rounded
+        cancelButton.keyEquivalent = "\u{1b}" // Escape key
+        contentView.addSubview(cancelButton)
+        
+        let saveButton = NSButton(title: "Save", target: self, action: #selector(saveClicked))
+        saveButton.frame = NSRect(x: 270, y: 10, width: 80, height: 28)
+        saveButton.bezelStyle = .rounded
+        saveButton.keyEquivalent = "\r" // Return key
+        contentView.addSubview(saveButton)
+        
+        self.contentView = contentView
+    }
+    
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        let hours = Int(seconds) / 3600
+        let minutes = (Int(seconds) % 3600) / 60
+        
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else {
+            return "\(minutes)m"
+        }
+    }
+    
+    private func formatEndTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .short
+        return formatter.string(from: date)
+    }
+    
+    func showWindow() {
+        // Position at TOP MIDDLE of screen
+        if let screen = NSScreen.main {
+            let screenRect = screen.visibleFrame
+            let windowWidth: CGFloat = 400
+            let windowHeight: CGFloat = 260
+            let padding: CGFloat = 60
+            
+            let x = screenRect.midX - (windowWidth / 2)
+            let y = screenRect.maxY - windowHeight - padding
+            
+            self.setFrame(NSRect(x: x, y: y, width: windowWidth, height: windowHeight), display: true)
+        }
+        
+        self.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        
+        // Make name field first responder
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.nameField.becomeFirstResponder()
+        }
+    }
+    
+    @objc private func saveClicked() {
+        // Get the description text, handling placeholder case
+        let descriptionText: String
+        if descriptionTextView.textColor != .placeholderTextColor {
+            descriptionText = descriptionTextView.string
+        } else {
+            descriptionText = ""
+        }
+        
+        onSave?(nameField.stringValue, descriptionText)
+    }
+    
+    @objc private func cancelClicked() {
+        onCancel?()
+    }
+}
+
+
+
 // MARK: - DragWindow - Character Version
 class DragWindow: NSPanel {
     private let characterImageView = NSImageView()
     private let textLayer = CATextLayer()
+    private let endTimeLayer = CATextLayer()
     private var currentDuration: TimeInterval = 0
     
     init() {
@@ -557,7 +1064,6 @@ class DragWindow: NSPanel {
         bgView.layer = CALayer()
         bgView.layer?.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
         
-        // Rounded background
         let backgroundLayer = CALayer()
         backgroundLayer.frame = NSRect(x: 10, y: 10, width: 100, height: 80)
         backgroundLayer.cornerRadius = 20
@@ -566,14 +1072,12 @@ class DragWindow: NSPanel {
         backgroundLayer.borderColor = NSColor.white.withAlphaComponent(0.25).cgColor
         bgView.layer?.addSublayer(backgroundLayer)
         
-        // Character image
         characterImageView.frame = NSRect(x: 20, y: 50, width: 80, height: 80)
         characterImageView.imageScaling = .scaleProportionallyUpOrDown
         characterImageView.alphaValue = 0.0
         bgView.addSubview(characterImageView)
         
-        // Timer text layer
-        textLayer.frame = CGRect(x: 10, y: 20, width: 100, height: 30)
+        textLayer.frame = CGRect(x: 10, y: 25, width: 100, height: 30)
         textLayer.alignmentMode = .center
         textLayer.font = NSFont.boldSystemFont(ofSize: 18)
         textLayer.fontSize = 18
@@ -582,6 +1086,16 @@ class DragWindow: NSPanel {
         textLayer.isWrapped = false
         textLayer.string = ""
         bgView.layer?.addSublayer(textLayer)
+        
+        endTimeLayer.frame = CGRect(x: 10, y: 8, width: 100, height: 20)
+        endTimeLayer.alignmentMode = .center
+        endTimeLayer.font = NSFont.systemFont(ofSize: 12)
+        endTimeLayer.fontSize = 12
+        endTimeLayer.foregroundColor = NSColor.systemGray.cgColor
+        endTimeLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+        endTimeLayer.isWrapped = false
+        endTimeLayer.string = ""
+        bgView.layer?.addSublayer(endTimeLayer)
         
         self.contentView = bgView
     }
@@ -592,6 +1106,7 @@ class DragWindow: NSPanel {
         
         characterImageView.alphaValue = 0.0
         textLayer.string = ""
+        endTimeLayer.string = ""
         currentDuration = 0
         
         self.alphaValue = 0
@@ -608,41 +1123,51 @@ class DragWindow: NSPanel {
         
         if dragDistance < 5 {
             textLayer.string = ""
+            endTimeLayer.string = ""
             characterImageView.alphaValue = 0.0
             currentDuration = 0
             return
         }
         
-        // Calculate duration
         let adjusted = max(0, dragDistance - 20)
         let minutes = Int(adjusted / 100 * 90)
-
-        // Clamp to max 4h 59m
         let clampedMinutes = min(minutes, 4 * 60 + 59)
         currentDuration = TimeInterval(clampedMinutes * 60)
         
         let hours = clampedMinutes / 60
         let mins = clampedMinutes % 60
         
-        // Character logic
         characterImageView.alphaValue = 1
         
         if currentDuration < 60 {
             characterImageView.image = NSImage(named: "DragIconWorried")
             textLayer.string = "⏱"
+            endTimeLayer.string = ""
             
         } else if clampedMinutes < 30 {
             characterImageView.image = NSImage(named: "DragIconHappy")
             textLayer.string = "\(mins)m"
+            let endTime = Date().addingTimeInterval(currentDuration)
+            endTimeLayer.string = formatEndTime(endTime)
             
         } else if hours >= 0 {
             characterImageView.image = NSImage(named: "DragIconTeeth")
             textLayer.string = "\(hours)h \(mins)m"
+            let endTime = Date().addingTimeInterval(currentDuration)
+            endTimeLayer.string = formatEndTime(endTime)
             
         } else {
             characterImageView.image = NSImage(named: "DragIconHappy")
             textLayer.string = "\(mins)m"
+            let endTime = Date().addingTimeInterval(currentDuration)
+            endTimeLayer.string = formatEndTime(endTime)
         }
+    }
+    
+    private func formatEndTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
     
     func getDuration() -> TimeInterval {
@@ -652,18 +1177,19 @@ class DragWindow: NSPanel {
     func hide() {
         characterImageView.alphaValue = 0.0
         textLayer.string = ""
+        endTimeLayer.string = ""
         currentDuration = 0
         
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.18
             self.animator().alphaValue = 0
         } completionHandler: {
+            self.close()
             self.orderOut(nil)
         }
     }
 }
 
-// Extension for NSBezierPath to CGPath conversion
 extension NSBezierPath {
     var cgPath: CGPath {
         let path = CGMutablePath()
@@ -692,11 +1218,8 @@ extension NSBezierPath {
     }
 }
 
-// Status Bar Button Drag Extension
 extension NSStatusBarButton {
     open override func mouseDown(with event: NSEvent) {
-        print("🖱 Mouse down detected")
-        
         let initialLocation = event.locationInWindow
         let dragThreshold: CGFloat = 3.0
         
@@ -716,8 +1239,6 @@ extension NSStatusBarButton {
                 
                 if !isDragging && (distance > dragThreshold || trackEvent.timestamp - initialTime > 0.1) {
                     isDragging = true
-                    print("🎯 Drag started! Distance: \(distance)")
-                    
                     let screenPoint = window.convertPoint(toScreen: currentLocation)
                     dragWindow = DragWindow()
                     dragWindow?.show(at: screenPoint)
@@ -736,19 +1257,14 @@ extension NSStatusBarButton {
                 }
                 
                 if isDragging {
-                    print("🎯 Drag ended")
                     let duration = dragWindow?.getDuration() ?? 0
                     dragWindow?.hide()
                     
                     if duration >= 60 {
                         let minutes = Int(duration) / 60
-                        print("⏱ Starting timer: \(minutes) minutes (\(Int(duration))s)")
                         TimerManager.shared.startTimer(duration: duration, title: "\(minutes) min timer")
-                    } else {
-                        print("⚠️ Duration too short: \(Int(duration))s")
                     }
                 } else {
-                    print("👆 Simple click detected")
                     self.sendAction(self.action, to: self.target)
                 }
                 
