@@ -1,4 +1,3 @@
-//
 //  MenuBarController.swift
 //  TimeSling
 //
@@ -46,7 +45,48 @@ class MenuBarController: NSObject {
         
         if let button = statusItem.button {
             print("✅ Status item button created")
-            button.title = "⏱"
+            
+            // Try multiple ways to load the icon
+            var icon: NSImage?
+            
+            // Method 1: Try loading from Assets
+            icon = NSImage(named: "MenuIcon")
+            print("📦 Asset catalog load: \(icon != nil ? "SUCCESS" : "FAILED")")
+            
+            // Method 2: Try loading from app bundle
+            if icon == nil {
+                if let bundlePath = Bundle.main.path(forResource: "MenuIcon", ofType: "png") {
+                    icon = NSImage(contentsOfFile: bundlePath)
+                    print("📂 Bundle path load: \(icon != nil ? "SUCCESS" : "FAILED")")
+                }
+            }
+            
+            // Method 3: Create a simple system symbol as test
+            if icon == nil {
+                icon = NSImage(systemSymbolName: "hourglass", accessibilityDescription: "Timer")
+                print("🔣 Using SF Symbol fallback")
+            }
+            
+            if let loadedIcon = icon {
+                // Set proper size for menu bar
+                loadedIcon.size = NSSize(width: 18, height: 18)
+                loadedIcon.isTemplate = true
+                
+                button.image = loadedIcon
+                button.imagePosition = .imageOnly
+                button.title = ""  // Clear any text
+                
+                print("✅ Icon set successfully")
+                print("   - Icon size: \(loadedIcon.size)")
+                print("   - Is template: \(loadedIcon.isTemplate)")
+                print("   - Button image: \(button.image != nil)")
+            } else {
+                // Ultimate fallback to emoji
+                button.title = "⏱"
+                button.image = nil
+                print("⚠️ All icon loading methods failed, using emoji fallback")
+            }
+            
             button.action = #selector(statusItemClicked)
             button.target = self
             button.sendAction(on: [.leftMouseDown, .rightMouseDown])
@@ -151,19 +191,32 @@ class MenuBarController: NSObject {
         var newTitle: String
         
         if activeTimers.isEmpty {
-            newTitle = "⏱"
+            // Show icon only when no timers
+            if button.image == nil {
+                if let icon = NSImage(named: "MenuIcon") {
+                    icon.isTemplate = true
+                    button.image = icon
+                }
+            }
+            button.title = ""
+            newTitle = "icon"  // For tracking purposes
         } else if activeTimers.count == 1 {
+            // Show countdown for single timer
+            button.image = nil  // Remove icon
             let timer = activeTimers[0]
             let timeRemaining = max(0, timer.endTime.timeIntervalSinceNow)
             let minutes = Int(timeRemaining) / 60
             let seconds = Int(timeRemaining) % 60
             newTitle = String(format: "%d:%02d", minutes, seconds)
+            button.title = newTitle
         } else {
-            newTitle = "\(activeTimers.count)-⏱'s"
+            // Show count for multiple timers
+            button.image = nil  // Remove icon
+            newTitle = "\(activeTimers.count) timers"
+            button.title = newTitle
         }
         
         if newTitle != lastDisplayedTitle {
-            button.title = newTitle
             lastDisplayedTitle = newTitle
             print("📝 Menu bar updated: '\(newTitle)' - \(activeTimers.count) active timers")
         }
