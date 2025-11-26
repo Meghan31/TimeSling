@@ -12,6 +12,8 @@ import AppKit
 struct TimerItem: Identifiable {
     let id = UUID()
     var title: String
+    var customName: String  // User-editable name
+    var description: String  // User-editable description
     var endTime: Date
     var duration: TimeInterval
 }
@@ -57,6 +59,8 @@ class TimerManager: ObservableObject {
     func startTimer(duration: TimeInterval, title: String) {
         let timer = TimerItem(
             title: title,
+            customName: "",  // Empty by default
+            description: "",  // Empty by default
             endTime: Date().addingTimeInterval(duration),
             duration: duration
         )
@@ -76,8 +80,29 @@ class TimerManager: ObservableObject {
                 userInfo: ["timer": timer]
             )
         }
+    }
+    
+    func updateTimer(id: UUID, customName: String, description: String) {
+        lock.lock()
+        if let index = _activeTimers.firstIndex(where: { $0.id == id }) {
+            _activeTimers[index].customName = customName
+            _activeTimers[index].description = description
+            
+            // Reschedule notification with updated info
+            if notificationsEnabled {
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id.uuidString])
+                scheduleNotification(for: _activeTimers[index])
+            }
+        }
+        lock.unlock()
         
-        print("✅ Timer started: \(Int(duration))s, ends at \(timer.endTime)")
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .timerStarted,
+                object: nil,
+                userInfo: ["timerId": id]
+            )
+        }
     }
     
     func cancelTimer(id: UUID) {
@@ -96,8 +121,6 @@ class TimerManager: ObservableObject {
                 userInfo: ["timerId": id]
             )
         }
-        
-        print("❌ Timer cancelled")
     }
     
     func cancelAllTimers() {
@@ -116,14 +139,18 @@ class TimerManager: ObservableObject {
                 userInfo: ["cancelAll": true]
             )
         }
-        
-        print("🗑 All timers cancelled")
     }
     
     func getActiveTimers() -> [TimerItem] {
         lock.lock()
         defer { lock.unlock() }
         return _activeTimers.filter { $0.endTime > Date() }
+    }
+    
+    func getTimer(id: UUID) -> TimerItem? {
+        lock.lock()
+        defer { lock.unlock() }
+        return _activeTimers.first { $0.id == id }
     }
     
     func hasActiveTimers() -> Bool {
@@ -143,23 +170,25 @@ class TimerManager: ObservableObject {
             lock.unlock()
             
             timerCompleted(timer)
-            print("🔔 Timer completed at \(now)!")
         }
     }
     
     private func timerCompleted(_ timer: TimerItem) {
-        print("🎉 Timer completed: \(timer.title)")
+        let displayName = timer.customName.isEmpty ? timer.title : timer.customName
         
         DispatchQueue.main.async {
             NotificationCenter.default.post(
                 name: .timerCompleted,
                 object: nil,
-                userInfo: ["timerTitle": timer.title, "timerId": timer.id]
+                userInfo: ["timerTitle": displayName, "timerId": timer.id, "description": timer.description]
             )
         }
         
         DispatchQueue.main.async {
-            let notification = CompletionNotificationWindow(timerTitle: timer.title)
+            let notification = CompletionNotificationWindow(
+                timerTitle: displayName,
+                timerDescription: timer.description
+            )
             notification.show()
         }
         
@@ -175,7 +204,15 @@ class TimerManager: ObservableObject {
     private func scheduleNotification(for timer: TimerItem) {
         let content = UNMutableNotificationContent()
         content.title = "⏰ Timer Complete!"
-        content.body = timer.title.isEmpty ? "Your timer has finished!" : "\(timer.title) is done!"
+        
+        let displayName = timer.customName.isEmpty ? timer.title : timer.customName
+        var bodyText = displayName.isEmpty ? "Your timer has finished!" : "\(displayName) is done!"
+        
+        if !timer.description.isEmpty {
+            bodyText += "\n\(timer.description)"
+        }
+        
+        content.body = bodyText
         content.sound = UNNotificationSound.defaultCritical
         content.interruptionLevel = .timeSensitive
         
@@ -191,10 +228,8 @@ class TimerManager: ObservableObject {
         )
         
         UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("❌ Notification error: \(error)")
-            } else {
-                print("✅ Notification scheduled for \(Int(timer.duration))s")
+            if error != nil {
+                // Notification scheduling failed silently
             }
         }
     }
@@ -202,7 +237,15 @@ class TimerManager: ObservableObject {
     private func showEnhancedSystemNotification(for timer: TimerItem) {
         let content = UNMutableNotificationContent()
         content.title = "⏰ Timer Complete!"
-        content.body = timer.title.isEmpty ? "Your timer has finished!" : "\(timer.title) is done!"
+        
+        let displayName = timer.customName.isEmpty ? timer.title : timer.customName
+        var bodyText = displayName.isEmpty ? "Your timer has finished!" : "\(displayName) is done!"
+        
+        if !timer.description.isEmpty {
+            bodyText += "\n\(timer.description)"
+        }
+        
+        content.body = bodyText
         content.sound = UNNotificationSound.defaultCritical
         content.interruptionLevel = .critical
         content.relevanceScore = 1.0
@@ -214,14 +257,15 @@ class TimerManager: ObservableObject {
         )
         
         UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("❌ Critical notification error: \(error)")
+            if error != nil {
+                // Fallback to custom notification window on error
                 DispatchQueue.main.async {
-                    let notification = CompletionNotificationWindow(timerTitle: timer.title)
+                    let notification = CompletionNotificationWindow(
+                        timerTitle: displayName,
+                        timerDescription: timer.description
+                    )
                     notification.show()
                 }
-            } else {
-                print("✅ Critical notification sent")
             }
         }
     }
@@ -239,26 +283,26 @@ class TimerManager: ObservableObject {
     func toggleNotifications() {
         notificationsEnabled.toggle()
         saveSettings()
-        print("🔔 Notifications \(notificationsEnabled ? "enabled" : "disabled")")
     }
     
     func toggleSound() {
         soundEnabled.toggle()
         saveSettings()
-        print("🔊 Sound \(soundEnabled ? "enabled" : "disabled")")
     }
 }
 
 // MARK: - Custom Completion Notification Window (FIXED for Fullscreen Apps)
 class CompletionNotificationWindow: NSPanel {
     private let message: String
+    private let descriptionText: String
     
-    init(timerTitle: String) {
+    init(timerTitle: String, timerDescription: String = "") {
         let title = timerTitle.isEmpty ? "Timer" : timerTitle
         self.message = "\(title) is done! ✅"
+        self.descriptionText = timerDescription
         
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 300, height: 100),
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: descriptionText.isEmpty ? 100 : 130),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -284,26 +328,42 @@ class CompletionNotificationWindow: NSPanel {
     }
     
     private func setupUI() {
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 100))
+        let height = descriptionText.isEmpty ? 100 : 130
+        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: CGFloat(height)))
         contentView.wantsLayer = true
         contentView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         contentView.layer?.cornerRadius = 12
         contentView.layer?.borderWidth = 1
         contentView.layer?.borderColor = NSColor.separatorColor.cgColor
         
+        var yOffset = CGFloat(height - 20)
+        
         let titleLabel = NSTextField(labelWithString: "⏰ Timer Complete!")
-        titleLabel.frame = NSRect(x: 20, y: 60, width: 260, height: 20)
+        titleLabel.frame = NSRect(x: 20, y: yOffset - 20, width: 260, height: 20)
         titleLabel.font = .systemFont(ofSize: 14, weight: .bold)
         titleLabel.alignment = .center
         titleLabel.textColor = .labelColor
         contentView.addSubview(titleLabel)
+        yOffset -= 25
         
         let messageLabel = NSTextField(labelWithString: message)
-        messageLabel.frame = NSRect(x: 20, y: 35, width: 260, height: 20)
+        messageLabel.frame = NSRect(x: 20, y: yOffset - 20, width: 260, height: 20)
         messageLabel.font = .systemFont(ofSize: 13, weight: .medium)
         messageLabel.alignment = .center
         messageLabel.textColor = .secondaryLabelColor
         contentView.addSubview(messageLabel)
+        yOffset -= 25
+        
+        if !descriptionText.isEmpty {
+            let descLabel = NSTextField(wrappingLabelWithString: descriptionText)
+            descLabel.frame = NSRect(x: 20, y: yOffset - 25, width: 260, height: 30)
+            descLabel.font = .systemFont(ofSize: 11)
+            descLabel.alignment = .center
+            descLabel.textColor = .tertiaryLabelColor
+            descLabel.maximumNumberOfLines = 2
+            contentView.addSubview(descLabel)
+            yOffset -= 35
+        }
         
         let closeButton = NSButton(title: "OK", target: self, action: #selector(closeWindow))
         closeButton.frame = NSRect(x: 120, y: 10, width: 60, height: 25)
@@ -325,8 +385,6 @@ class CompletionNotificationWindow: NSPanel {
     }
     
     func show() {
-        print("🔔 Showing notification over fullscreen apps")
-        
         self.level = .screenSaver
         self.orderFrontRegardless()
         

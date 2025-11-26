@@ -222,6 +222,8 @@ class NumberRollerWindow: NSPanel {
             backing: .buffered,
             defer: false
         )
+        
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         // Window configuration
         self.isOpaque = false
@@ -257,32 +259,32 @@ class NumberRollerWindow: NSPanel {
     func showWindow() {
         // Position at top right of screen with some padding
         if let screen = NSScreen.main {
-            let screenRect = screen.visibleFrame
-            let windowWidth: CGFloat = 260
-            let windowHeight: CGFloat = 220
-            let padding: CGFloat = 20
-            
-            let x = screenRect.maxX - windowWidth - padding
-            let y = screenRect.maxY - windowHeight - padding
-            
-            let targetFrame = NSRect(x: x, y: y, width: windowWidth, height: windowHeight)
-            
-            // Set initial position slightly above the target (for animation)
-            let startFrame = targetFrame.offsetBy(dx: 0, dy: 12)
-            
-            self.setFrame(startFrame, display: false)
-            self.alphaValue = 0
-            
-            self.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+                    let screenRect = screen.visibleFrame
+                    let windowWidth: CGFloat = 260
+                    let windowHeight: CGFloat = 220
+                    let padding: CGFloat = 60 // More padding from top
+                    
+                    let x = screenRect.midX - (windowWidth / 2)
+                    let y = screenRect.maxY - windowHeight - padding
+                    
+                    // Set initial position for animation
+                    let startFrame = NSRect(x: x, y: y - 12, width: windowWidth, height: windowHeight)
+                    let targetFrame = NSRect(x: x, y: y, width: windowWidth, height: windowHeight)
+                    
+                    self.setFrame(startFrame, display: false)
+                    self.alphaValue = 0
+                    
+                    self.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
 
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.25
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                self.animator().alphaValue = 1
-                self.animator().setFrame(targetFrame, display: true)
-            }
-        } else {
+                    NSAnimationContext.runAnimationGroup { ctx in
+                        ctx.duration = 0.25
+                        ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                        self.animator().alphaValue = 1
+                        self.animator().setFrame(targetFrame, display: true)
+                    }
+                }
+            else {
             // Fallback if no screen is found
             self.center()
             self.alphaValue = 0
