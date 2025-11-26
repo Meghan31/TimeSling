@@ -7,6 +7,8 @@
 
 </p>
 
+
+
 <h1 align="center">⏱️ TimeSling</h1>
 
 <p align="center">
@@ -22,6 +24,29 @@
 
 ---
 
+## 📦 Installation
+
+### Option 1: Download (No Xcode Required)
+
+1. Go to [**Releases**](../../releases)
+2. Download `TimeSling.zip`
+3. Unzip and drag `TimeSling.app` to `/Applications`
+4. **First launch:** Right-click → `Open` → Click `Open` (bypasses Gatekeeper)
+
+### Option 2: Build from Source
+
+Requires **Xcode 16+** and **macOS 15.5+**
+
+```bash
+git clone https://github.com/Meghan31/TimeSling.git
+cd TimeSling
+open TimeSling.xcodeproj
+```
+
+Then in Xcode: `⌘ + R` to run, or `Product → Archive` for a release build.
+
+---
+
 ## ✨ Features
 
 ```
@@ -33,18 +58,37 @@
 😬😄😁 Cute expressions while dragging
 ```
 
-## 🚀 Quick Start
+---
 
-**Presets:** `5m` `10m` `15m` `30m` `1h` `2h`
+## 🚀 Usage
 
-**Custom:** Drag the menu bar icon down. Further = longer timer. Release to start.
+| Action | Result |
+|--------|--------|
+| **Left-click** | Quick presets menu |
+| **Right-click** | Full menu with settings |
+| **Drag down** | Custom timer (further = longer) |
 
+**Presets:** `5m` · `10` · `15m` · `30m` · `1h` · `2h`
+
+---
+
+## 🔁 Launch at Login
+
+`System Settings` → `General` → `Login Items` → Add TimeSling
+
+---
 
 ## 🎨 The Vibe
 
 No dock icon. No window. Just vibes in your menu bar.
 
 Timer done? Get hit with sounds + notifications that pierce through fullscreen apps.
+
+---
+
+## 📄 License
+
+MIT — do whatever you want with it.
 
 ---
 
